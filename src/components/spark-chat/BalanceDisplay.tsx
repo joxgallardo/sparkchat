@@ -1,16 +1,17 @@
 
 import type React from 'react';
-import { Bitcoin, DollarSign, Wallet, Loader2 } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Bitcoin, DollarSign, Wallet, Loader2, UserCircle } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 
 interface BalanceDisplayProps {
   btcBalance?: number;
   usdBalance?: number;
   isLoading?: boolean;
+  userId?: string; // Added to display which user's balance this is
 }
 
-const BalanceDisplay: React.FC<BalanceDisplayProps> = ({ btcBalance, usdBalance, isLoading }) => {
+const BalanceDisplay: React.FC<BalanceDisplayProps> = ({ btcBalance, usdBalance, isLoading, userId }) => {
   return (
     <Card className="bg-background border-border shadow-lg">
       <CardHeader className="pb-2">
@@ -19,8 +20,13 @@ const BalanceDisplay: React.FC<BalanceDisplayProps> = ({ btcBalance, usdBalance,
           Your Balances
           {isLoading && <Loader2 size={20} className="animate-spin text-muted-foreground" />}
         </CardTitle>
+        {userId && (
+          <CardDescription className="flex items-center gap-1 text-xs text-muted-foreground">
+            <UserCircle size={14} /> User: {userId}
+          </CardDescription>
+        )}
       </CardHeader>
-      <CardContent className="space-y-2">
+      <CardContent className="space-y-2 pt-2">
         <div className="flex items-center justify-between p-3 bg-card rounded-md">
           <div className="flex items-center gap-2">
             <Bitcoin size={20} className="text-orange-400" />

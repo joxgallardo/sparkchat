@@ -22,6 +22,8 @@ import {
   convertUSDToBTCAction
 } from './actions';
 
+// Simulate a logged-in user. In a real app, this would come from an auth provider.
+const CURRENT_USER_ID = 'test-user-123';
 
 export default function SparkChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -45,22 +47,24 @@ export default function SparkChatPage() {
     setIsLoadingBalances(true);
     setIsLoadingTransactions(true);
     try {
-      const balances = await fetchBalancesAction();
+      const balances = await fetchBalancesAction(CURRENT_USER_ID);
       setBtcBalance(balances.btc);
       setUsdBalance(balances.usd);
     } catch (error) {
       console.error("Error fetching balances:", error);
-      toast({ title: "Error", description: "Could not fetch balances.", variant: "destructive" });
+      const errorMessage = error instanceof Error ? error.message : "Could not fetch balances.";
+      toast({ title: "Error", description: errorMessage, variant: "destructive" });
     } finally {
       setIsLoadingBalances(false);
     }
 
     try {
-      const fetchedTransactions = await fetchTransactionsAction();
+      const fetchedTransactions = await fetchTransactionsAction(CURRENT_USER_ID);
       setTransactions(fetchedTransactions);
     } catch (error) {
       console.error("Error fetching transactions:", error);
-      toast({ title: "Error", description: "Could not fetch transaction history.", variant: "destructive" });
+      const errorMessage = error instanceof Error ? error.message : "Could not fetch transaction history.";
+      toast({ title: "Error", description: errorMessage, variant: "destructive" });
     } finally {
       setIsLoadingTransactions(false);
     }
@@ -70,7 +74,7 @@ export default function SparkChatPage() {
     addMessageToChat({
       id: crypto.randomUUID(),
       sender: 'bot',
-      text: "Welcome to SparkChat! I'm connecting to your account... Try commands like 'deposit 0.01 BTC', 'convert 100 USD to BTC', 'withdraw 50 USD', or 'check balance'.",
+      text: `Welcome to SparkChat! I'm connecting to your account (User: ${CURRENT_USER_ID})... Try commands like 'deposit 0.01 BTC', 'convert 100 USD to BTC', 'withdraw 50 USD', or 'check balance'.`,
       timestamp: new Date(),
     });
     refreshBalancesAndTransactions();
@@ -97,7 +101,7 @@ export default function SparkChatPage() {
         interpretation: interpretation,
       };
       addMessageToChat(botInterpretationMessage);
-      await processCommand(interpretation); // Now async
+      await processCommand(interpretation);
     } catch (error) {
       console.error("Error understanding/processing command:", error);
       const errorMessage = error instanceof Error ? error.message : "An unknown error occurred.";
@@ -126,15 +130,15 @@ export default function SparkChatPage() {
       switch (command.intent) {
         case 'deposit':
           if (currency === 'BTC' && amount > 0) {
-            const result = await depositBTCAction(amount);
+            const result = await depositBTCAction(amount, CURRENT_USER_ID);
             setBtcBalance(result.newBtcBalance);
-            // setTransactions(prev => [result.transaction, ...prev]); // Handled by refresh or specific update
-            responseText = `Successfully deposited ${amount} BTC.`;
-            toast({ title: "Deposit Successful", description: responseText });
+            responseText = `Successfully initiated deposit of ${amount} BTC.`;
+            if (result.invoice) {
+              responseText += `\nInvoice: ${result.invoice.substring(0,30)}... (Full invoice in service logs for mock)`;
+            }
+            toast({ title: "Deposit Initiated", description: `BTC Deposit for ${amount} started.` });
           } else if (currency === 'USD' && amount > 0) {
-             responseText = "USD deposits are handled by converting to BTC first. Try 'convert X USD to BTC' then deposit BTC.";
-             // Or, if Lightspark supports direct fiat deposit to trade for BTC, implement here.
-             // For now, guiding user.
+             responseText = "USD deposits are handled by converting to BTC first. Try 'convert X USD to BTC' then 'deposit Y BTC'.";
           } else {
             responseText = "Invalid deposit command. Please specify a valid amount and currency (BTC). E.g., 'deposit 0.1 BTC'.";
           }
@@ -142,11 +146,13 @@ export default function SparkChatPage() {
 
         case 'withdraw':
           if (currency === 'USD' && amount > 0) {
-            const result = await withdrawUSDAction(amount);
+            // In a real scenario, the AI or UI would need to get the targetAddress for withdrawal.
+            // For now, using a mock address passed to the action.
+            const mockTargetAddress = "placeholder_withdrawal_address_or_details";
+            const result = await withdrawUSDAction(amount, mockTargetAddress, CURRENT_USER_ID);
             setUsdBalance(result.newUsdBalance);
-            // setTransactions(prev => [result.transaction, ...prev]);
-            responseText = `Successfully withdrew ${amount} USD.`;
-            toast({ title: "Withdrawal Successful", description: responseText });
+            responseText = `Successfully initiated withdrawal of ${amount} USD to ${mockTargetAddress}.`;
+            toast({ title: "Withdrawal Initiated", description: responseText });
           } else {
             responseText = "Invalid withdrawal command. Please specify amount in USD. E.g., 'withdraw 100 USD'. BTC withdrawals require conversion to USD first.";
           }
@@ -154,11 +160,10 @@ export default function SparkChatPage() {
 
         case 'convert_to_usd': 
           if (currency === 'BTC' && amount > 0) {
-            const result = await convertBTCToUSDAction(amount);
+            const result = await convertBTCToUSDAction(amount, CURRENT_USER_ID);
             setBtcBalance(result.newBtcBalance);
             setUsdBalance(result.newUsdBalance);
-            // setTransactions(prev => [result.transaction, ...prev]);
-            responseText = `Converted ${amount} BTC to ${result.transaction.convertedAmount?.toFixed(2)} USD.`;
+            responseText = `Converted ${amount} BTC to approx ${result.transaction.convertedAmount?.toFixed(2)} USD.`;
             toast({ title: "Conversion Successful", description: responseText });
           } else {
             responseText = "Invalid conversion. Try 'convert 0.01 BTC to USD'.";
@@ -167,11 +172,10 @@ export default function SparkChatPage() {
         
         case 'convert_to_btc': 
           if (currency === 'USD' && amount > 0) {
-            const result = await convertUSDToBTCAction(amount);
+            const result = await convertUSDToBTCAction(amount, CURRENT_USER_ID);
             setUsdBalance(result.newUsdBalance);
             setBtcBalance(result.newBtcBalance);
-            // setTransactions(prev => [result.transaction, ...prev]);
-            responseText = `Converted ${amount} USD to ${result.transaction.convertedAmount?.toFixed(8)} BTC.`;
+            responseText = `Converted ${amount} USD to approx ${result.transaction.convertedAmount?.toFixed(8)} BTC.`;
             toast({ title: "Conversion Successful", description: responseText });
           } else {
             responseText = "Invalid conversion. Try 'convert 100 USD to BTC'.";
@@ -179,10 +183,8 @@ export default function SparkChatPage() {
           break;
 
         case 'check_balance':
-          // Balances are already in state, but we can re-fetch for "freshness" or rely on current state.
-          // For this example, we'll just use current state and add a note about fetching.
-          await refreshBalancesAndTransactions(); // Re-fetch for up-to-date info
-          responseText = `Your current balances are (refreshed):\nBTC: ${btcBalance?.toFixed(8) ?? 'Loading...'}\nUSD: ${usdBalance?.toFixed(2) ?? 'Loading...'}`;
+          await refreshBalancesAndTransactions(); 
+          responseText = `Your current balances (refreshed for User: ${CURRENT_USER_ID}):\nBTC: ${btcBalance?.toFixed(8) ?? 'Loading...'}\nUSD: ${usdBalance?.toFixed(2) ?? 'Loading...'}`;
           break;
 
         default:
@@ -190,12 +192,11 @@ export default function SparkChatPage() {
           break;
       }
     } catch (error) {
-      console.error("Error processing command with Lightspark service:", error);
+      console.error("Error processing command:", error);
       const errorMessage = error instanceof Error ? error.message : "An error occurred with the financial operation.";
       responseText = `Operation failed: ${errorMessage}`;
       toast({ title: "Operation Failed", description: responseText, variant: "destructive" });
     }
-
 
     addMessageToChat({
       id: crypto.randomUUID(),
@@ -204,8 +205,7 @@ export default function SparkChatPage() {
       timestamp: new Date(),
     });
 
-    // Refresh balances and transactions after any state-changing operation
-    if (command.intent !== 'check_balance' && command.intent !== 'unknown') { // check_balance already refreshes
+    if (command.intent !== 'check_balance' && command.intent !== 'unknown' && !responseText.startsWith("Operation failed")) {
       await refreshBalancesAndTransactions();
     }
   };
@@ -214,6 +214,7 @@ export default function SparkChatPage() {
     setIsAssistantProcessing(true);
     setSavingsAdvice(null);
     try {
+      // Savings assistant is generic and doesn't need userId for now.
       const advice = await getSavingsSuggestions({ savingsPatterns, financialGoals });
       setSavingsAdvice(advice);
       addMessageToChat({
@@ -253,7 +254,8 @@ export default function SparkChatPage() {
           <BalanceDisplay 
             btcBalance={btcBalance === null ? undefined : btcBalance} 
             usdBalance={usdBalance === null ? undefined : usdBalance} 
-            isLoading={isLoadingBalances} 
+            isLoading={isLoadingBalances}
+            userId={CURRENT_USER_ID}
           />
           <Separator className="bg-border" />
           <TransactionHistoryCard transactions={transactions} isLoading={isLoadingTransactions} />
