@@ -13,45 +13,14 @@ import { Separator } from '@/components/ui/separator';
 import { understandCommand, type UnderstandCommandOutput } from '@/ai/flows/understand-command';
 import { getSavingsSuggestions, type SavingsAssistantOutput } from '@/ai/flows/savings-assistant';
 import { useToast } from "@/hooks/use-toast";
-import { 
-  getLightsparkBalances,
-  getLightsparkTransactionHistory,
-  depositBTCWithLightspark,
-  withdrawUSDWithLightspark,
-  convertBTCToUSDWithLightspark,
-  convertUSDToBTCWithLightspark,
-} from '@/services/lightspark'; // Placeholder service
-
-// Server Actions (defined in the same file for simplicity, can be moved)
-async function fetchBalancesAction(): Promise<{ btc: number; usd: number }> {
-  'use server';
-  return getLightsparkBalances();
-}
-
-async function fetchTransactionsAction(): Promise<Transaction[]> {
-  'use server';
-  return getLightsparkTransactionHistory();
-}
-
-async function depositBTCAction(amount: number): Promise<{ newBtcBalance: number; transaction: Transaction }> {
-  'use server';
-  return depositBTCWithLightspark(amount);
-}
-
-async function withdrawUSDAction(amount: number): Promise<{ newUsdBalance: number; transaction: Transaction }> {
-  'use server';
-  return withdrawUSDWithLightspark(amount);
-}
-
-async function convertBTCToUSDAction(btcAmount: number): Promise<{ newBtcBalance: number; newUsdBalance: number; transaction: Transaction }> {
-  'use server';
-  return convertBTCToUSDWithLightspark(btcAmount);
-}
-
-async function convertUSDToBTCAction(usdAmount: number): Promise<{ newUsdBalance: number; newBtcBalance: number; transaction: Transaction }> {
-  'use server';
-  return convertUSDToBTCWithLightspark(usdAmount);
-}
+import {
+  fetchBalancesAction,
+  fetchTransactionsAction,
+  depositBTCAction,
+  withdrawUSDAction,
+  convertBTCToUSDAction,
+  convertUSDToBTCAction
+} from './actions';
 
 
 export default function SparkChatPage() {
