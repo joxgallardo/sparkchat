@@ -1,7 +1,9 @@
+
 import type React from 'react';
-import { History, ArrowDownCircle, ArrowUpCircle, Repeat } from 'lucide-react';
+import { History, ArrowDownCircle, ArrowUpCircle, Repeat, Loader2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 
 export interface Transaction {
@@ -17,6 +19,7 @@ export interface Transaction {
 
 interface TransactionHistoryCardProps {
   transactions: Transaction[];
+  isLoading?: boolean;
 }
 
 const TransactionIcon: React.FC<{ type: Transaction['type'] }> = ({ type }) => {
@@ -33,28 +36,42 @@ const TransactionIcon: React.FC<{ type: Transaction['type'] }> = ({ type }) => {
   }
 };
 
-const TransactionHistoryCard: React.FC<TransactionHistoryCardProps> = ({ transactions }) => {
+const TransactionHistoryCard: React.FC<TransactionHistoryCardProps> = ({ transactions, isLoading }) => {
   return (
     <Card className="bg-background border-border shadow-lg">
       <CardHeader className="pb-2">
         <CardTitle className="text-xl font-headline flex items-center gap-2 text-primary">
           <History size={24} />
           Transaction History
+          {isLoading && <Loader2 size={20} className="animate-spin text-muted-foreground" />}
         </CardTitle>
       </CardHeader>
       <CardContent>
         <ScrollArea className="h-[200px] pr-3">
-          {transactions.length === 0 ? (
+          {isLoading && transactions.length === 0 ? (
+            <div className="space-y-3">
+              {[...Array(3)].map((_, i) => (
+                <div key={i} className="flex items-start gap-3 p-3 bg-card rounded-md">
+                  <Skeleton className="h-5 w-5 rounded-full" />
+                  <div className="flex-1 space-y-1">
+                    <Skeleton className="h-4 w-3/4" />
+                    <Skeleton className="h-3 w-1/2" />
+                  </div>
+                  <Skeleton className="h-4 w-1/4" />
+                </div>
+              ))}
+            </div>
+          ) : transactions.length === 0 && !isLoading ? (
             <p className="text-muted-foreground text-sm text-center py-4">No transactions yet.</p>
           ) : (
             <ul className="space-y-3">
-              {transactions.slice().reverse().map((tx) => (
+              {transactions.map((tx) => ( // Already sorted by service if needed, or sort here
                 <li key={tx.id} className="flex items-start gap-3 p-3 bg-card rounded-md">
                   <TransactionIcon type={tx.type} />
                   <div className="flex-1">
                     <p className="font-medium text-sm text-foreground">{tx.description}</p>
                     <p className="text-xs text-muted-foreground">
-                      {tx.timestamp.toLocaleDateString()} {tx.timestamp.toLocaleTimeString()}
+                      {new Date(tx.timestamp).toLocaleDateString()} {new Date(tx.timestamp).toLocaleTimeString()}
                     </p>
                   </div>
                   <div className="text-right">
