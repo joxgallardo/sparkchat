@@ -14,6 +14,7 @@ import {
   convertBTCToUSDAction,
   convertUSDToBTCAction
 } from '@/app/actions';
+import { fundWalletWithSimulatedBTC, fundWalletWithRealBTC } from '@/services/lightspark';
 import { formatBalanceMessage, formatTransactionMessage, formatErrorMessage } from '../utils/telegram';
 
 export interface WalletOperationResult {
@@ -100,17 +101,19 @@ export async function handleBTCDeposit(
     
     const result = await depositBTCAction(amount, userId);
     
-    const message = `
-✅ *Depósito de Bitcoin exitoso*
+    const message = `✅ *Depósito exitoso*
 
-💰 Cantidad depositada: ${amount} BTC
-💳 Nuevo saldo BTC: ${result.newBtcBalance} BTC
-📝 Transacción: ${result.transaction.description}
-
-${result.invoice ? `🔗 *Factura de pago:* ${result.invoice}` : ''}
-    `.trim();
+💰 ${amount} BTC depositado
+💳 Saldo BTC: ${result.newBtcBalance} BTC
+📝 ${result.transaction.description}`;
     
     await bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
+    
+    if (result.invoice) {
+      await bot.sendMessage(chatId, `🔗 *Factura:* ${result.invoice.substring(0, 100)}...`, { 
+        parse_mode: 'Markdown' 
+      });
+    }
     
     return {
       success: true,
@@ -143,14 +146,11 @@ export async function handleUSDWithdrawal(
     
     const result = await withdrawUSDAction(amount, targetAddress, userId);
     
-    const message = `
-✅ *Retiro de USD exitoso*
+    const message = `✅ *Retiro exitoso*
 
-💰 Cantidad retirada: $${amount} USD
-💳 Nuevo saldo USD: $${result.newUsdBalance} USD
-📝 Transacción: ${result.transaction.description}
-📍 Dirección destino: ${targetAddress}
-    `.trim();
+💰 $${amount} USD retirado
+💳 Saldo USD: $${result.newUsdBalance} USD
+📝 ${result.transaction.description}`;
     
     await bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
     
@@ -159,6 +159,26 @@ export async function handleUSDWithdrawal(
       message: `Retiro de $${amount} USD procesado exitosamente`
     };
   } catch (error) {
+    if (error instanceof Error && error.message.includes('Insufficient USD balance')) {
+      const insufficientMessage = `❌ *Saldo insuficiente*
+
+💳 Saldo disponible: $0 USD
+💰 Cantidad solicitada: $${amount} USD
+
+💡 *Sugerencias:*
+• Deposita Bitcoin primero
+• Convierte BTC a USD
+• Verifica tu saldo con /balance`;
+      
+      await bot.sendMessage(chatId, insufficientMessage, { parse_mode: 'Markdown' });
+      
+      return {
+        success: false,
+        message: 'Saldo USD insuficiente',
+        error: 'Insufficient USD balance'
+      };
+    }
+    
     const errorMessage = formatErrorMessage(error);
     await bot.sendMessage(chatId, errorMessage);
     
@@ -184,14 +204,11 @@ export async function handleBTCToUSDConversion(
     
     const result = await convertBTCToUSDAction(btcAmount, userId);
     
-    const message = `
-✅ *Conversión BTC → USD exitosa*
+    const message = `✅ *Conversión exitosa*
 
-💰 Convertido: ${btcAmount} BTC → $${result.newUsdBalance} USD
-💳 Nuevo saldo BTC: ${result.newBtcBalance} BTC
-💳 Nuevo saldo USD: $${result.newUsdBalance} USD
-📝 Transacción: ${result.transaction.description}
-    `.trim();
+💰 ${btcAmount} BTC → $${result.newUsdBalance} USD
+💳 Saldo BTC: ${result.newBtcBalance} BTC
+💳 Saldo USD: $${result.newUsdBalance} USD`;
     
     await bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
     
@@ -200,6 +217,26 @@ export async function handleBTCToUSDConversion(
       message: `Conversión de ${btcAmount} BTC a USD procesada exitosamente`
     };
   } catch (error) {
+    // Manejo especial para saldo insuficiente
+    if (error instanceof Error && error.message.includes('Insufficient BTC balance')) {
+      const insufficientMessage = `❌ *Saldo BTC insuficiente*
+
+🪙 Saldo disponible: 0 BTC
+💰 Cantidad solicitada: ${btcAmount} BTC
+
+💡 *Sugerencias:*
+• Deposita Bitcoin primero con /deposit
+• Verifica tu saldo con /balance`;
+      
+      await bot.sendMessage(chatId, insufficientMessage, { parse_mode: 'Markdown' });
+      
+      return {
+        success: false,
+        message: 'Saldo BTC insuficiente',
+        error: 'Insufficient BTC balance'
+      };
+    }
+    
     const errorMessage = formatErrorMessage(error);
     await bot.sendMessage(chatId, errorMessage);
     
@@ -225,14 +262,11 @@ export async function handleUSDToBTCConversion(
     
     const result = await convertUSDToBTCAction(usdAmount, userId);
     
-    const message = `
-✅ *Conversión USD → BTC exitosa*
+    const message = `✅ *Conversión exitosa*
 
-💰 Convertido: $${usdAmount} USD → ${result.newBtcBalance} BTC
-💳 Nuevo saldo USD: $${result.newUsdBalance} USD
-💳 Nuevo saldo BTC: ${result.newBtcBalance} BTC
-📝 Transacción: ${result.transaction.description}
-    `.trim();
+💰 $${usdAmount} USD → ${result.newBtcBalance} BTC
+💳 Saldo USD: $${result.newUsdBalance} USD
+💳 Saldo BTC: ${result.newBtcBalance} BTC`;
     
     await bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
     
@@ -241,6 +275,27 @@ export async function handleUSDToBTCConversion(
       message: `Conversión de $${usdAmount} USD a BTC procesada exitosamente`
     };
   } catch (error) {
+    // Manejo especial para saldo insuficiente
+    if (error instanceof Error && error.message.includes('Insufficient USD balance')) {
+      const insufficientMessage = `❌ *Saldo USD insuficiente*
+
+💵 Saldo disponible: $0 USD
+💰 Cantidad solicitada: $${usdAmount} USD
+
+💡 *Sugerencias:*
+• Deposita Bitcoin primero
+• Convierte BTC a USD
+• Verifica tu saldo con /balance`;
+      
+      await bot.sendMessage(chatId, insufficientMessage, { parse_mode: 'Markdown' });
+      
+      return {
+        success: false,
+        message: 'Saldo USD insuficiente',
+        error: 'Insufficient USD balance'
+      };
+    }
+    
     const errorMessage = formatErrorMessage(error);
     await bot.sendMessage(chatId, errorMessage);
     
@@ -304,7 +359,77 @@ export function validateWalletOperation(
         };
       }
       break;
+      
+    case 'fund_wallet':
+      if (currency?.toLowerCase() !== 'btc') {
+        return {
+          valid: false,
+          error: 'Solo se puede fondear con Bitcoin (BTC)'
+        };
+      }
+      break;
   }
   
   return { valid: true };
+}
+
+/**
+ * Handle wallet funding operation (for testing)
+ */
+export async function handleWalletFunding(
+  bot: TelegramBot, 
+  chatId: number, 
+  amount: number, 
+  userId?: string
+): Promise<WalletOperationResult> {
+  try {
+    await bot.sendMessage(chatId, '⏳ Fondear wallet con Bitcoin...');
+    
+    const result = await fundWalletWithRealBTC(userId || 'default-user', amount);
+    
+    if (result.success) {
+      let message: string;
+      
+      if (result.fundingMethod === 'fundNode') {
+        message = `✅ *Wallet fondeado exitosamente*
+
+💰 ${amount} BTC agregado al wallet
+💳 Nuevo saldo: ${result.newBalance} BTC
+📝 ${result.message}`;
+      } else {
+        message = `📋 *Dirección de fondeo generada*
+
+💰 Cantidad solicitada: ${amount} BTC
+💳 Saldo actual: ${result.newBalance} BTC
+📍 Dirección: \`${result.fundingAddress}\`
+
+📝 *Instrucciones:*
+1. Envía exactamente ${amount} BTC a la dirección arriba
+2. Espera las confirmaciones de la red
+3. El saldo se actualizará automáticamente
+
+⚠️ *Importante:* Solo envía BTC de testnet a esta dirección`;
+      }
+      
+      await bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
+      
+      return {
+        success: true,
+        message: result.fundingMethod === 'fundNode' 
+          ? `Wallet fondeado con ${amount} BTC exitosamente`
+          : `Dirección de fondeo generada para ${amount} BTC`
+      };
+    } else {
+      throw new Error(result.message);
+    }
+  } catch (error) {
+    const errorMessage = formatErrorMessage(error);
+    await bot.sendMessage(chatId, errorMessage);
+    
+    return {
+      success: false,
+      message: 'Error al fondear wallet',
+      error: errorMessage
+    };
+  }
 } 

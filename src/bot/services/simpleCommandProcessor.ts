@@ -93,6 +93,20 @@ export function processSimpleCommand(command: string): SimpleCommandResult {
     };
   }
   
+  // Fund wallet patterns (for testing)
+  const fundMatch = lowerCommand.match(/(?:fondea|fondear|fund)\s+([\d.]+)\s*(?:btc|bitcoin)/i);
+  if (fundMatch) {
+    const amount = parseFloat(fundMatch[1]);
+    console.log('🔍 SimpleCommandProcessor: Detectado intent: fund_wallet, amount:', amount);
+    return {
+      success: true,
+      intent: 'fund_wallet',
+      amount: amount,
+      currency: 'btc',
+      message: `Comando procesado: Fondear wallet con ${amount} BTC`
+    };
+  }
+  
   // Price check patterns (cuánto vale, precio, etc.)
   const priceMatch = lowerCommand.match(/(?:cuánto|cuanto|precio|vale)\s+(?:es|vale)\s+([\d.]+)\s*(?:btc|bitcoin)\s+(?:en|a)\s*(?:usd|dólares|dolares)/i);
   if (priceMatch) {
@@ -183,7 +197,7 @@ export function validateSimpleCommandParams(
 ): { valid: boolean; error?: string } {
   
   // Validate amount for operations that require it
-  if (['deposit', 'withdraw', 'convert_to_usd', 'convert_to_btc'].includes(intent)) {
+  if (['deposit', 'withdraw', 'convert_to_usd', 'convert_to_btc', 'fund_wallet'].includes(intent)) {
     if (!amount || amount <= 0) {
       return { 
         valid: false, 
@@ -204,6 +218,13 @@ export function validateSimpleCommandParams(
     return { 
       valid: false, 
       error: 'Solo se pueden retirar USD' 
+    };
+  }
+  
+  if (intent === 'fund_wallet' && currency?.toLowerCase() !== 'btc') {
+    return { 
+      valid: false, 
+      error: 'Solo se puede fondear con Bitcoin (BTC)' 
     };
   }
   

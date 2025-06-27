@@ -7,6 +7,7 @@ import {
   handleBTCToUSDConversion,
   handleUSDToBTCConversion,
   handleTransactionHistory,
+  handleWalletFunding,
   validateWalletOperation
 } from './wallet';
 import { formatWelcomeMessage, formatHelpMessage, formatSavingsAdviceMessage } from '../utils/telegram';
@@ -121,6 +122,12 @@ export function setupMessageHandlers(bot: TelegramBot) {
         case 'convert_to_btc':
           if (result.amount) {
             await handleUSDToBTCConversion(bot, chatId, result.amount, sparkChatUserId);
+          }
+          break;
+        
+        case 'fund_wallet':
+          if (result.amount) {
+            await handleWalletFunding(bot, chatId, result.amount, sparkChatUserId);
           }
           break;
         
