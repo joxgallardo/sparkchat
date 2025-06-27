@@ -1,4 +1,3 @@
-
 'use server';
 /**
  * @fileOverview Placeholder service for database interactions.
@@ -6,11 +5,13 @@
  * to store and retrieve user data, including their Lightspark configurations.
  */
 
-import type { User, UserLightsparkConfig } from '@/types/user';
+import type { User, UserLightsparkConfig, TelegramUser, TelegramSession } from '@/types/user';
 
 // --- MOCK DATABASE ---
 const MOCK_USER_DB = new Map<string, User>();
 const MOCK_LIGHTSPARK_CONFIG_DB = new Map<string, UserLightsparkConfig>();
+const MOCK_TELEGRAM_USER_DB = new Map<number, TelegramUser>();
+const MOCK_TELEGRAM_SESSION_DB = new Map<number, TelegramSession>();
 
 // Initialize with a default user for testing
 const DEFAULT_USER_ID = 'test-user-123';
@@ -25,7 +26,110 @@ if (!MOCK_USER_DB.has(DEFAULT_USER_ID)) {
 }
 // --- END MOCK DATABASE ---
 
+// Telegram User Management Functions
+export async function getTelegramUser(telegramId: number): Promise<TelegramUser | null> {
+  console.log(`DATABASE SERVICE: Fetching Telegram user by ID: ${telegramId} (MOCK)`);
+  await new Promise(resolve => setTimeout(resolve, 50)); // Simulate DB delay
+  return MOCK_TELEGRAM_USER_DB.get(telegramId) || null;
+}
 
+export async function createTelegramUser(telegramUser: Omit<TelegramUser, 'createdAt' | 'lastSeen'>): Promise<TelegramUser> {
+  console.log(`DATABASE SERVICE: Creating Telegram user: ${telegramUser.telegramId} (MOCK)`);
+  await new Promise(resolve => setTimeout(resolve, 50)); // Simulate DB delay
+  
+  const newUser: TelegramUser = {
+    ...telegramUser,
+    createdAt: new Date(),
+    lastSeen: new Date()
+  };
+  
+  MOCK_TELEGRAM_USER_DB.set(telegramUser.telegramId, newUser);
+  
+  // Also create a SparkChat user if it doesn't exist
+  if (!MOCK_USER_DB.has(telegramUser.sparkChatUserId)) {
+    MOCK_USER_DB.set(telegramUser.sparkChatUserId, { 
+      id: telegramUser.sparkChatUserId,
+      email: telegramUser.username ? `${telegramUser.username}@telegram.local` : undefined
+    });
+  }
+  
+  console.log(`DATABASE SERVICE: Telegram user created:`, newUser);
+  return newUser;
+}
+
+export async function updateTelegramUserLastSeen(telegramId: number): Promise<void> {
+  console.log(`DATABASE SERVICE: Updating last seen for Telegram user: ${telegramId} (MOCK)`);
+  await new Promise(resolve => setTimeout(resolve, 50)); // Simulate DB delay
+  
+  const user = MOCK_TELEGRAM_USER_DB.get(telegramId);
+  if (user) {
+    user.lastSeen = new Date();
+    MOCK_TELEGRAM_USER_DB.set(telegramId, user);
+  }
+}
+
+export async function getOrCreateTelegramUser(
+  telegramId: number, 
+  username?: string, 
+  firstName?: string, 
+  lastName?: string
+): Promise<TelegramUser> {
+  console.log(`DATABASE SERVICE: Get or create Telegram user: ${telegramId} (MOCK)`);
+  
+  let user = await getTelegramUser(telegramId);
+  
+  if (!user) {
+    // Create new user with unique SparkChat ID
+    const sparkChatUserId = `telegram-${telegramId}-${Date.now()}`;
+    user = await createTelegramUser({
+      telegramId,
+      sparkChatUserId,
+      username,
+      firstName,
+      lastName,
+      isActive: true
+    });
+  } else {
+    // Update last seen
+    await updateTelegramUserLastSeen(telegramId);
+  }
+  
+  return user;
+}
+
+// Session Management Functions
+export async function getTelegramSession(telegramId: number): Promise<TelegramSession | null> {
+  console.log(`DATABASE SERVICE: Fetching Telegram session for ID: ${telegramId} (MOCK)`);
+  await new Promise(resolve => setTimeout(resolve, 50)); // Simulate DB delay
+  return MOCK_TELEGRAM_SESSION_DB.get(telegramId) || null;
+}
+
+export async function createTelegramSession(session: Omit<TelegramSession, 'lastActivity'>): Promise<TelegramSession> {
+  console.log(`DATABASE SERVICE: Creating Telegram session for ID: ${session.telegramId} (MOCK)`);
+  await new Promise(resolve => setTimeout(resolve, 50)); // Simulate DB delay
+  
+  const newSession: TelegramSession = {
+    ...session,
+    lastActivity: new Date()
+  };
+  
+  MOCK_TELEGRAM_SESSION_DB.set(session.telegramId, newSession);
+  console.log(`DATABASE SERVICE: Telegram session created:`, newSession);
+  return newSession;
+}
+
+export async function updateTelegramSessionActivity(telegramId: number): Promise<void> {
+  console.log(`DATABASE SERVICE: Updating session activity for Telegram ID: ${telegramId} (MOCK)`);
+  await new Promise(resolve => setTimeout(resolve, 50)); // Simulate DB delay
+  
+  const session = MOCK_TELEGRAM_SESSION_DB.get(telegramId);
+  if (session) {
+    session.lastActivity = new Date();
+    MOCK_TELEGRAM_SESSION_DB.set(telegramId, session);
+  }
+}
+
+// Original functions remain the same
 export async function getUserById(userId: string): Promise<User | null> {
   console.log(`DATABASE SERVICE: Fetching user by ID: ${userId} (MOCK)`);
   // TODO: Replace with actual database query

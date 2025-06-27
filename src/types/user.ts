@@ -1,4 +1,3 @@
-
 export interface User {
   id: string;
   email?: string;
@@ -12,4 +11,27 @@ export interface UserLightsparkConfig {
   // lightsparkApiTokenClientId?: string;
   // lightsparkApiTokenClientSecret?: string;
   // lightsparkNodeId?: string; // This might also be user-specific
+}
+
+// Telegram user management types
+export interface TelegramUser {
+  telegramId: number;
+  sparkChatUserId: string;
+  username?: string;
+  firstName?: string;
+  lastName?: string;
+  isActive: boolean;
+  createdAt: Date;
+  lastSeen: Date;
+}
+
+export interface TelegramSession {
+  telegramId: number;
+  sparkChatUserId: string;
+  isAuthenticated: boolean;
+  lastActivity: Date;
+  preferences?: {
+    language?: string;
+    notifications?: boolean;
+  };
 }
