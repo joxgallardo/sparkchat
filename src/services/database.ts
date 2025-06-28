@@ -87,7 +87,9 @@ export async function getOrCreateTelegramUser(
       username,
       firstName,
       lastName,
-      isActive: true
+      isActive: true,
+      accountNumber: 0, // Default account number
+      umaAddress: `user${telegramId}@sparkchat.btc` // Generate UMA address
     });
   } else {
     // Update last seen

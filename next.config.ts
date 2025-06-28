@@ -18,6 +18,32 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+  webpack: (config, { isServer }) => {
+    // Handle handlebars require.extensions issue
+    config.resolve.fallback = {
+      ...config.resolve.fallback,
+      fs: false,
+      net: false,
+      tls: false,
+    };
+    
+    // Ignore specific modules that cause issues
+    config.externals = config.externals || [];
+    if (isServer) {
+      config.externals.push('@opentelemetry/exporter-jaeger');
+    }
+    
+    // Exclude problematic modules
+    config.externals = config.externals || [];
+    config.externals.push('handlebars');
+    
+    return config;
+  },
+  serverExternalPackages: ['@opentelemetry/sdk-node', 'genkit', '@genkit-ai/googleai'],
+  // Disable telemetry during build
+  env: {
+    OTEL_EXPORTER_JAEGER_ENDPOINT: '',
+  },
 };
 
 export default nextConfig;

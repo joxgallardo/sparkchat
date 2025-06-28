@@ -8,8 +8,8 @@
  * - UnderstandCommandOutput - The return type for the understandCommand function.
  */
 
-import {ai} from '@/ai/genkit';
-import {z} from 'genkit';
+import { ai } from '@/ai/genkit';
+import { z } from 'genkit';
 
 const UnderstandCommandInputSchema = z.object({
   command: z
@@ -36,13 +36,19 @@ const UnderstandCommandOutputSchema = z.object({
 export type UnderstandCommandOutput = z.infer<typeof UnderstandCommandOutputSchema>;
 
 export async function understandCommand(input: UnderstandCommandInput): Promise<UnderstandCommandOutput> {
-  return understandCommandFlow(input);
+  try {
+    return await understandCommandFlow(input);
+  } catch (error) {
+    // Fallback to simple parsing if AI fails
+    console.warn('AI command understanding failed, using fallback:', error);
+    return fallbackCommandUnderstanding(input);
+  }
 }
 
 const prompt = ai.definePrompt({
   name: 'understandCommandPrompt',
-  input: {schema: UnderstandCommandInputSchema},
-  output: {schema: UnderstandCommandOutputSchema},
+  input: { schema: UnderstandCommandInputSchema },
+  output: { schema: UnderstandCommandOutputSchema },
   prompt: `You are an AI assistant designed to understand user commands related to Bitcoin savings and spending within a Telegram interface.
 
   Analyze the following command and extract the intent, amount, and currency (if provided).
@@ -68,7 +74,53 @@ const understandCommandFlow = ai.defineFlow(
     outputSchema: UnderstandCommandOutputSchema,
   },
   async input => {
-    const {output} = await prompt(input);
+    const { output } = await prompt(input);
     return output!;
   }
 );
+
+// Fallback function for when AI is not available
+function fallbackCommandUnderstanding(input: UnderstandCommandInput): UnderstandCommandOutput {
+  const { command } = input;
+  const lowerCommand = command.toLowerCase();
+  
+  // Simple intent detection
+  let intent = 'unknown';
+  let amount: number | undefined;
+  let currency: string | undefined;
+  
+  // Check for balance-related commands
+  if (lowerCommand.includes('balance') || lowerCommand.includes('check') || lowerCommand.includes('how much')) {
+    intent = 'check_balance';
+  }
+  // Check for deposit commands
+  else if (lowerCommand.includes('deposit') || lowerCommand.includes('send') || lowerCommand.includes('add')) {
+    intent = 'deposit';
+  }
+  // Check for withdrawal commands
+  else if (lowerCommand.includes('withdraw') || lowerCommand.includes('take out') || lowerCommand.includes('remove')) {
+    intent = 'withdraw';
+  }
+  // Check for conversion commands
+  else if (lowerCommand.includes('convert') || lowerCommand.includes('exchange') || lowerCommand.includes('usd')) {
+    intent = 'convert_to_usd';
+  }
+  
+  // Extract amount and currency using regex
+  const amountMatch = command.match(/(\d+(?:\.\d+)?)\s*(btc|usd|dollars?|bitcoin)/i);
+  if (amountMatch) {
+    amount = parseFloat(amountMatch[1]);
+    const currencyMatch = amountMatch[2].toLowerCase();
+    if (currencyMatch === 'btc' || currencyMatch === 'bitcoin') {
+      currency = 'BTC';
+    } else if (currencyMatch === 'usd' || currencyMatch === 'dollars' || currencyMatch === 'dollar') {
+      currency = 'USD';
+    }
+  }
+  
+  return {
+    intent,
+    amount,
+    currency,
+  };
+}

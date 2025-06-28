@@ -1,4 +1,3 @@
-
 import type React from 'react';
 import { History, ArrowDownCircle, ArrowUpCircle, Repeat, Loader2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -10,7 +9,7 @@ import { cn } from '@/lib/utils';
 // It might need adjustments as you implement the actual SDK calls.
 export interface Transaction {
   id: string;
-  type: 'deposit' | 'withdraw' | 'convert_to_usd' | 'convert_to_btc' | 'fee' | 'other'; // Added 'fee', 'other'
+  type: 'deposit' | 'withdraw' | 'withdrawal' | 'convert_to_usd' | 'convert_to_btc' | 'conversion' | 'payment' | 'fee' | 'other'; // Added new types for UMA
   amount: number; // Primary amount of the transaction
   currency: 'BTC' | 'USD' | string; // Allow other currency strings if needed
   convertedAmount?: number; // Amount after conversion, if applicable
@@ -32,10 +31,14 @@ const TransactionIcon: React.FC<{ type: Transaction['type'] }> = ({ type }) => {
     case 'deposit':
       return <ArrowDownCircle className="h-5 w-5 text-green-500" />;
     case 'withdraw':
+    case 'withdrawal':
       return <ArrowUpCircle className="h-5 w-5 text-red-500" />;
     case 'convert_to_usd':
     case 'convert_to_btc':
+    case 'conversion':
       return <Repeat className="h-5 w-5 text-primary" />;
+    case 'payment':
+      return <ArrowUpCircle className="h-5 w-5 text-blue-500" />;
     default:
       return <History className="h-5 w-5 text-muted-foreground" />;
   }

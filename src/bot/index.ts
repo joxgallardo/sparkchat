@@ -7,38 +7,36 @@ import { setupMessageHandlers } from './handlers/messages';
 // Load environment variables
 dotenv.config();
 
-const token = process.env.TELEGRAM_BOT_TOKEN;
+// Get bot token from environment
+const botToken = process.env.TELEGRAM_BOT_TOKEN;
 
-console.log('🔍 Debug: Verificando configuración del bot...');
-console.log('🔍 Debug: TELEGRAM_BOT_TOKEN existe:', !!token);
-console.log('🔍 Debug: TELEGRAM_BOT_TOKEN comienza con:', token ? token.substring(0, 10) + '...' : 'NO TOKEN');
-
-if (!token) {
-  console.error('❌ TELEGRAM_BOT_TOKEN is required in .env file');
+if (!botToken) {
+  console.error('❌ TELEGRAM_BOT_TOKEN not found in environment variables');
+  console.error('Please set TELEGRAM_BOT_TOKEN in your .env.local file');
   process.exit(1);
 }
 
-if (token === 'your_telegram_bot_token_here') {
-  console.error('❌ TELEGRAM_BOT_TOKEN still has default value. Please update .env file with your real bot token');
-  process.exit(1);
-}
+// Create bot instance
+const bot = new TelegramBot(botToken, { polling: true });
 
-// Create bot instance with better error handling
-const bot = new TelegramBot(token, { 
-  polling: true
+// Make bot instance globally accessible for rate limiting middleware
+(global as any).bot = bot;
+
+console.log('🤖 SparkChat Bot starting...');
+
+// Bot startup message
+bot.on('polling_error', (error) => {
+  console.error('❌ Polling error:', error);
 });
 
-console.log('🤖 SparkChat Telegram Bot starting...');
+bot.on('error', (error) => {
+  console.error('❌ Bot error:', error);
+});
 
-// Add message logging
-bot.on('message', (msg) => {
-  console.log('📨 Bot recibió mensaje:', {
-    chatId: msg.chat.id,
-    text: msg.text,
-    isCommand: msg.text?.startsWith('/'),
-    from: msg.from?.username || msg.from?.first_name,
-    timestamp: new Date().toISOString()
-  });
+// Bot ready event
+bot.on('polling_start', () => {
+  console.log('✅ Bot polling started successfully');
+  console.log('🤖 Bot is ready to receive messages');
 });
 
 // Middlewares se implementarán manualmente en los handlers
@@ -63,29 +61,6 @@ bot.on('error', (error) => {
   });
 });
 
-bot.on('polling_error', (error) => {
-  console.error('❌ Polling error:', error);
-  console.error('❌ Polling error details:', {
-    message: error.message
-  });
-  
-  // Don't exit on polling errors, just log them
-  // The bot will try to reconnect automatically
-});
-
-// Add connection success logging
-bot.on('webhook_error', (error) => {
-  console.error('❌ Webhook error:', error);
-});
-
-// Log when bot is ready
-setTimeout(() => {
-  console.log('✅ SparkChat Telegram Bot is running and ready!');
-  console.log('📊 Bot info:', {
-    token: token ? token.substring(0, 10) + '...' : 'NO TOKEN'
-  });
-}, 2000);
-
 // Graceful shutdown
 process.on('SIGINT', () => {
   console.log('🛑 Shutting down bot...');
@@ -109,14 +84,5 @@ process.on('SIGTERM', () => {
   process.exit(0);
 });
 
-// Handle uncaught exceptions
-process.on('uncaughtException', (error) => {
-  console.error('❌ Uncaught Exception:', error);
-  console.error('❌ Stack trace:', error.stack);
-  process.exit(1);
-});
-
-process.on('unhandledRejection', (reason, promise) => {
-  console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
-  process.exit(1);
-}); 
+// Export bot instance for use in other modules
+export { bot }; 

@@ -6,10 +6,12 @@
  * It provides self-custodial wallet functionality for users.
  * 
  * Spark SDK: @buildonspark/spark-sdk
+ * LRC-20 SDK: @buildonspark/lrc20-sdk
  * UMA SDK: @uma-sdk/core
  */
 
 import { SparkWallet } from '@buildonspark/spark-sdk';
+import { LRCWallet, NetworkType, type LRC20WalletApiConfig, Lrc20TransactionDto } from '@buildonspark/lrc20-sdk';
 import * as bip39 from 'bip39';
 // ExitSpeed puede no estar exportado directamente, así que usamos el string literal si es necesario
 // import { ExitSpeed } from '@buildonspark/spark-sdk/dist/enums';
@@ -19,6 +21,10 @@ import { getMasterMnemonic, getUserWalletInfo } from './userManager';
 
 // --- Spark Configuration ---
 const SPARK_NETWORK = process.env.SPARK_NETWORK || 'TESTNET';
+
+// --- LRC-20 Configuration ---
+const LRC20_NODE_URL = process.env.LRC20_NODE_URL || 'https://lrc20-node.buildonspark.com';
+const ELECTRS_URL = process.env.ELECTRS_URL || 'https://electrs.buildonspark.com';
 
 // --- Hermetic Mode Detection ---
 function isHermeticMode(): boolean {
@@ -33,6 +39,7 @@ function isHermeticMode(): boolean {
 
 // --- Wallet Cache ---
 const walletCache = new Map<string, SparkWallet>();
+const lrc20WalletCache = new Map<string, LRCWallet>();
 
 // --- Types ---
 interface SparkTransfer {
@@ -42,6 +49,22 @@ interface SparkTransfer {
   createdTime?: Date;
   memo?: string;
   status: string;
+}
+
+interface TokenBalance {
+  tokenPubkey: string;
+  balance: number;
+  name: string;
+  symbol: string;
+}
+
+interface TokenTransferResult {
+  success: boolean;
+  transactionId?: string;
+  amount: number;
+  tokenPubkey: string;
+  recipient: string;
+  error?: string;
 }
 
 // --- Helper Functions ---
@@ -118,6 +141,139 @@ async function getUserWallet(userId: string, accountNumber: number): Promise<Spa
     }
     
     throw new Error(`Failed to initialize Spark wallet: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+
+/**
+ * Get or create an LRC-20 wallet for a user
+ */
+async function getUserLRC20Wallet(userId: string, accountNumber: number): Promise<LRCWallet> {
+  const cacheKey = `lrc20_${userId}_${accountNumber}`;
+  
+  if (lrc20WalletCache.has(cacheKey)) {
+    console.log(`SPARK SERVICE: Using cached LRC-20 wallet for user ${userId}`);
+    return lrc20WalletCache.get(cacheKey)!;
+  }
+
+  console.log(`SPARK SERVICE: Initializing LRC-20 wallet for user ${userId} with account ${accountNumber}`);
+  console.log(`SPARK SERVICE: Using network: ${SPARK_NETWORK}`);
+
+  try {
+    // Get master mnemonic from userManager
+    const masterMnemonic = await getMasterMnemonic();
+    
+    // Convert mnemonic to seed
+    const seedBuffer = await bip39.mnemonicToSeed(masterMnemonic);
+    
+    // Determine network type
+    const networkType = SPARK_NETWORK === 'TESTNET' ? NetworkType.TESTNET : 
+                       SPARK_NETWORK === 'MAINNET' ? NetworkType.MAINNET : 
+                       SPARK_NETWORK === 'REGTEST' ? NetworkType.REGTEST : 
+                       NetworkType.TESTNET;
+    
+    // Create token signer with proper key derivation
+    const tokenSigner = {
+      getIdentityPublicKey: async (): Promise<Uint8Array> => {
+        // Use proper BIP32 derivation for identity key
+        const { BIP32Factory } = require('bip32');
+        const ecc = require('tiny-secp256k1');
+        const bip32 = BIP32Factory(ecc);
+        
+        // Derive path: m/86'/1'/0'/0/0 for testnet (86' is for Taproot, 1' for testnet)
+        // For mainnet it would be m/86'/0'/0'/0/0
+        const path = networkType === NetworkType.TESTNET ? 
+          `m/86'/1'/0'/0/${accountNumber}` : 
+          `m/86'/0'/0'/0/${accountNumber}`;
+        
+        const root = bip32.fromSeed(seedBuffer);
+        const child = root.derivePath(path);
+        
+        // Return the public key (32 bytes for Taproot)
+        return child.publicKey;
+      },
+      signMessageWithIdentityKey: async (message: Uint8Array): Promise<Uint8Array> => {
+        // Use proper signing with the derived key
+        const { BIP32Factory } = require('bip32');
+        const ecc = require('tiny-secp256k1');
+        const bip32 = BIP32Factory(ecc);
+        
+        const path = networkType === NetworkType.TESTNET ? 
+          `m/86'/1'/0'/0/${accountNumber}` : 
+          `m/86'/0'/0'/0/${accountNumber}`;
+        
+        const root = bip32.fromSeed(seedBuffer);
+        const child = root.derivePath(path);
+        
+        // Sign the message
+        const signature = ecc.sign(message, child.privateKey!);
+        return signature;
+      },
+      signSchnorrWithIdentityKey: async (message: Uint8Array): Promise<Uint8Array> => {
+        // Use proper Schnorr signing with the derived key
+        const { BIP32Factory } = require('bip32');
+        const ecc = require('tiny-secp256k1');
+        const bip32 = BIP32Factory(ecc);
+        
+        const path = networkType === NetworkType.TESTNET ? 
+          `m/86'/1'/0'/0/${accountNumber}` : 
+          `m/86'/0'/0'/0/${accountNumber}`;
+        
+        const root = bip32.fromSeed(seedBuffer);
+        const child = root.derivePath(path);
+        
+        // Sign with Schnorr (Taproot uses Schnorr signatures)
+        const signature = ecc.signSchnorr(message, child.privateKey!);
+        return signature;
+      },
+      generateMnemonic: async (): Promise<string> => masterMnemonic,
+      createSparkWalletFromSeed: async (seed: Uint8Array | string): Promise<string> => {
+        // Return a wallet identifier
+        return `wallet_${userId}_${accountNumber}`;
+      },
+      mnemonicToSeed: async (mnemonic: string): Promise<Uint8Array> => {
+        const seedBuffer = await bip39.mnemonicToSeed(mnemonic);
+        return new Uint8Array(seedBuffer);
+      },
+      signPsbt: async (psbt: any, input: number): Promise<any> => {
+        // Use proper PSBT signing
+        const { BIP32Factory } = require('bip32');
+        const ecc = require('tiny-secp256k1');
+        const bip32 = BIP32Factory(ecc);
+        
+        const path = networkType === NetworkType.TESTNET ? 
+          `m/86'/1'/0'/0/${accountNumber}` : 
+          `m/86'/0'/0'/0/${accountNumber}`;
+        
+        const root = bip32.fromSeed(seedBuffer);
+        const child = root.derivePath(path);
+        
+        // Sign the PSBT input
+        psbt.signInput(input, child);
+        return psbt;
+      }
+    };
+
+    // Configure LRC-20 API
+    const apiConfig: LRC20WalletApiConfig = {
+      lrc20NodeUrl: LRC20_NODE_URL,
+      electrsUrl: ELECTRS_URL
+    };
+
+    // Create LRC-20 wallet
+    const lrc20Wallet = await LRCWallet.create(
+      require('bitcoinjs-lib').networks[SPARK_NETWORK.toLowerCase()] || require('bitcoinjs-lib').networks.testnet,
+      networkType,
+      apiConfig,
+      tokenSigner
+    );
+
+    lrc20WalletCache.set(cacheKey, lrc20Wallet);
+    console.log(`SPARK SERVICE: LRC-20 wallet initialized successfully for user ${userId}`);
+    
+    return lrc20Wallet;
+  } catch (error) {
+    console.error(`SPARK SERVICE: Failed to initialize LRC-20 wallet for user ${userId}:`, error);
+    throw new Error(`Failed to initialize LRC-20 wallet: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }
 
@@ -766,4 +922,226 @@ export async function testSparkConnectivity(): Promise<{ success: boolean; error
       }
     };
   }
+}
+
+/**
+ * Get LRC-20 token balances for a user using Telegram ID
+ */
+export async function getLRC20TokenBalancesByTelegramId(telegramId: number): Promise<TokenBalance[]> {
+  console.log(`SPARK SERVICE: Getting LRC-20 token balances for Telegram ID: ${telegramId}`);
+  
+  try {
+    const walletInfo = await getUserWalletInfo(telegramId);
+    const lrc20Wallet = await getUserLRC20Wallet(walletInfo.userId, walletInfo.accountNumber);
+    
+    // Sync wallet to get latest balances
+    await lrc20Wallet.syncWallet();
+    
+    // Get LRC-20 balances
+    const balances = await lrc20Wallet.getLrc20Balances();
+    
+    // Convert bigint to number and format results
+    const tokenBalances: TokenBalance[] = balances.map(balance => ({
+      tokenPubkey: balance.tokenPubkey,
+      balance: typeof balance.balance === 'bigint' ? Number(balance.balance) : balance.balance,
+      name: balance.name,
+      symbol: balance.symbol
+    }));
+    
+    console.log(`SPARK SERVICE: Retrieved ${tokenBalances.length} LRC-20 token balances`);
+    
+    return tokenBalances;
+  } catch (error) {
+    console.error(`SPARK SERVICE: Error getting LRC-20 token balances for Telegram ID ${telegramId}:`, error);
+    throw new Error(`Failed to get LRC-20 token balances: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+
+/**
+ * Get LRC-20 token balances for a user (legacy function for backward compatibility)
+ */
+export async function getLRC20TokenBalances(userId: string, accountNumber: number): Promise<TokenBalance[]> {
+  console.log(`SPARK SERVICE: Getting LRC-20 token balances for user ${userId}, account ${accountNumber}`);
+  
+  try {
+    const lrc20Wallet = await getUserLRC20Wallet(userId, accountNumber);
+    
+    // Sync wallet to get latest balances
+    await lrc20Wallet.syncWallet();
+    
+    // Get LRC-20 balances
+    const balances = await lrc20Wallet.getLrc20Balances();
+    
+    // Convert bigint to number and format results
+    const tokenBalances: TokenBalance[] = balances.map(balance => ({
+      tokenPubkey: balance.tokenPubkey,
+      balance: typeof balance.balance === 'bigint' ? Number(balance.balance) : balance.balance,
+      name: balance.name,
+      symbol: balance.symbol
+    }));
+    
+    console.log(`SPARK SERVICE: Retrieved ${tokenBalances.length} LRC-20 token balances`);
+    
+    return tokenBalances;
+  } catch (error) {
+    console.error(`SPARK SERVICE: Error getting LRC-20 token balances for user ${userId}:`, error);
+    throw new Error(`Failed to get LRC-20 token balances: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+
+/**
+ * Transfer LRC-20 tokens using Telegram ID
+ */
+export async function transferLRC20TokensByTelegramId(
+  telegramId: number,
+  tokenPubkey: string,
+  amount: number,
+  recipientAddress: string,
+  feeRateVb: number = 10
+): Promise<TokenTransferResult> {
+  console.log(`SPARK SERVICE: Transferring ${amount} tokens (${tokenPubkey}) from ${telegramId} to ${recipientAddress}`);
+  
+  try {
+    const walletInfo = await getUserWalletInfo(telegramId);
+    const lrc20Wallet = await getUserLRC20Wallet(walletInfo.userId, walletInfo.accountNumber);
+    
+    // Sync wallet to get latest balances
+    await lrc20Wallet.syncWallet();
+    
+    // Check if user has sufficient token balance
+    const balances = await lrc20Wallet.getLrc20Balances();
+    const tokenBalance = balances.find(b => b.tokenPubkey === tokenPubkey);
+    
+    if (!tokenBalance || Number(tokenBalance.balance) < amount) {
+      throw new Error(`Insufficient token balance. Required: ${amount}, Available: ${tokenBalance ? Number(tokenBalance.balance) : 0}`);
+    }
+    
+    // Prepare transfer transaction
+    const transferTx = await lrc20Wallet.prepareTransfer([
+      {
+        recipient: recipientAddress,
+        amount: BigInt(amount),
+        tokenPubkey: tokenPubkey
+      }
+    ], feeRateVb);
+    
+    // Convert to DTO and broadcast transaction
+    const transferTxDto = Lrc20TransactionDto.fromLrc20Transaction(transferTx);
+    const txId = await lrc20Wallet.broadcast(transferTxDto);
+    
+    console.log(`SPARK SERVICE: LRC-20 token transfer successful. TXID: ${txId}`);
+    
+    return {
+      success: true,
+      transactionId: txId,
+      amount,
+      tokenPubkey,
+      recipient: recipientAddress
+    };
+  } catch (error) {
+    console.error(`SPARK SERVICE: Error transferring LRC-20 tokens for Telegram ID ${telegramId}:`, error);
+    return {
+      success: false,
+      amount,
+      tokenPubkey,
+      recipient: recipientAddress,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    };
+  }
+}
+
+/**
+ * Transfer LRC-20 tokens (legacy function for backward compatibility)
+ */
+export async function transferLRC20Tokens(
+  userId: string,
+  accountNumber: number,
+  tokenPubkey: string,
+  amount: number,
+  recipientAddress: string,
+  feeRateVb: number = 10
+): Promise<TokenTransferResult> {
+  console.log(`SPARK SERVICE: Transferring ${amount} tokens (${tokenPubkey}) from user ${userId} to ${recipientAddress}`);
+  
+  try {
+    const lrc20Wallet = await getUserLRC20Wallet(userId, accountNumber);
+    
+    // Sync wallet to get latest balances
+    await lrc20Wallet.syncWallet();
+    
+    // Check if user has sufficient token balance
+    const balances = await lrc20Wallet.getLrc20Balances();
+    const tokenBalance = balances.find(b => b.tokenPubkey === tokenPubkey);
+    
+    if (!tokenBalance || Number(tokenBalance.balance) < amount) {
+      throw new Error(`Insufficient token balance. Required: ${amount}, Available: ${tokenBalance ? Number(tokenBalance.balance) : 0}`);
+    }
+    
+    // Prepare transfer transaction
+    const transferTx = await lrc20Wallet.prepareTransfer([
+      {
+        recipient: recipientAddress,
+        amount: BigInt(amount),
+        tokenPubkey: tokenPubkey
+      }
+    ], feeRateVb);
+    
+    // Convert to DTO and broadcast transaction
+    const transferTxDto = Lrc20TransactionDto.fromLrc20Transaction(transferTx);
+    const txId = await lrc20Wallet.broadcast(transferTxDto);
+    
+    console.log(`SPARK SERVICE: LRC-20 token transfer successful. TXID: ${txId}`);
+    
+    return {
+      success: true,
+      transactionId: txId,
+      amount,
+      tokenPubkey,
+      recipient: recipientAddress
+    };
+  } catch (error) {
+    console.error(`SPARK SERVICE: Error transferring LRC-20 tokens for user ${userId}:`, error);
+    return {
+      success: false,
+      amount,
+      tokenPubkey,
+      recipient: recipientAddress,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    };
+  }
+}
+
+/**
+ * Get token information by token pubkey
+ */
+export async function getTokenInfo(tokenPubkey: string): Promise<{ name: string; symbol: string; totalSupply?: number }> {
+  console.log(`SPARK SERVICE: Getting token info for ${tokenPubkey}`);
+  
+  try {
+    // For now, return mock data since we don't have a specific user context
+    // In production, this would query the LRC-20 node for token metadata
+    return {
+      name: 'Sample Token',
+      symbol: 'SMPL',
+      totalSupply: 1000000
+    };
+  } catch (error) {
+    console.error(`SPARK SERVICE: Error getting token info for ${tokenPubkey}:`, error);
+    throw new Error(`Failed to get token info: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+
+/**
+ * Clear LRC-20 wallet cache
+ */
+export async function clearLRC20WalletCache(): Promise<void> {
+  console.log(`SPARK SERVICE: Clearing LRC-20 wallet cache`);
+  lrc20WalletCache.clear();
+}
+
+/**
+ * Get LRC-20 wallet cache size
+ */
+export async function getLRC20WalletCacheSize(): Promise<number> {
+  return lrc20WalletCache.size;
 }

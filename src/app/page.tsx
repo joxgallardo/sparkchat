@@ -1,4 +1,3 @@
-
 "use client";
 
 import type React from 'react';
@@ -23,7 +22,7 @@ import {
 } from './actions';
 
 // Simulate a logged-in user. In a real app, this would come from an auth provider.
-const CURRENT_USER_ID = 'test-user-123';
+const CURRENT_USER_ID = 950870644; // Telegram ID for testing
 
 export default function SparkChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -255,7 +254,7 @@ export default function SparkChatPage() {
             btcBalance={btcBalance === null ? undefined : btcBalance} 
             usdBalance={usdBalance === null ? undefined : usdBalance} 
             isLoading={isLoadingBalances}
-            userId={CURRENT_USER_ID}
+            userId={CURRENT_USER_ID.toString()}
           />
           <Separator className="bg-border" />
           <TransactionHistoryCard transactions={transactions} isLoading={isLoadingTransactions} />

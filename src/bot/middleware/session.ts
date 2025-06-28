@@ -1,5 +1,6 @@
 import type { Message } from 'node-telegram-bot-api';
 import { getUserContext, UserContext } from '@/services/userManager';
+import { rateLimitMiddleware, DEFAULT_RATE_LIMIT_CONFIG, type RateLimitConfig } from './rateLimit';
 
 /**
  * Session Middleware for Telegram Bot
@@ -63,6 +64,46 @@ export function withSession<T extends any[]>(
 }
 
 /**
+ * Combined middleware that applies both rate limiting and session management
+ * This is the recommended middleware for production use
+ */
+export function withRateLimitAndSession<T extends any[]>(
+  handler: (sessionContext: SessionContext, ...args: T) => Promise<void>,
+  rateLimitConfig: RateLimitConfig = DEFAULT_RATE_LIMIT_CONFIG
+) {
+  return async (message: Message, ...args: T) => {
+    try {
+      // First, apply rate limiting
+      const rateLimitResult = await rateLimitMiddleware(message, rateLimitConfig);
+      
+      if (!rateLimitResult.allowed) {
+        // Send rate limit message to user
+        const chatId = message.chat.id;
+        const bot = (global as any).bot; // Access bot instance
+        
+        if (bot) {
+          const rateLimitMessage = `🚫 *Rate Limit Exceeded*\n\n${rateLimitResult.reason}`;
+          await bot.sendMessage(chatId, rateLimitMessage, { parse_mode: 'Markdown' });
+        }
+        
+        console.log(`RATE LIMIT: Blocked message from user ${message.from?.id}: ${rateLimitResult.reason}`);
+        return;
+      }
+      
+      // Then, apply session middleware
+      const sessionContext = await sessionMiddleware(message);
+      
+      // Finally, execute the handler
+      await handler(sessionContext, ...args);
+      
+    } catch (error) {
+      console.error('COMBINED MIDDLEWARE ERROR:', error);
+      throw error;
+    }
+  };
+}
+
+/**
  * Check if user is authenticated
  */
 export async function requireAuth(sessionContext: SessionContext): Promise<void> {
@@ -72,11 +113,10 @@ export async function requireAuth(sessionContext: SessionContext): Promise<void>
 }
 
 /**
- * Get user's SparkChat ID from session context
- * This replaces the hardcoded MOCK_USER_ID
+ * Get SparkChat user ID from session context
  */
 export function getSparkChatUserId(sessionContext: SessionContext): string {
-  return sessionContext.userContext.sparkChatUserId;
+  return sessionContext.userContext.user.sparkChatUserId;
 }
 
 /**

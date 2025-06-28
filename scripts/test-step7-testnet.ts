@@ -47,7 +47,7 @@ async function testTestnetConfiguration() {
       
     } catch (error) {
       console.log('❌ Failed to generate deposit address');
-      console.log(`   Error: ${error.message}`);
+      console.log(`   Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
 
     console.log('\n🎉 Test completed!');

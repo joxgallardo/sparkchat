@@ -732,20 +732,34 @@ export async function handleWalletFunding(
   try {
     await bot.sendMessage(chatId, '⏳ Fondear wallet con Bitcoin...');
     
-    // TODO: Migrate to Spark funding functions
-    // const result = await fundWalletWithRealBTC(telegramId || 'default-user', amount);
+    // Use Spark SDK to fund the wallet
+    // This simulates funding by creating a Lightning invoice for the amount
+    const amountSats = Math.round(amount * 100_000_000);
     
-    // Temporary implementation until Spark funding is ready
-    const message = `🚧 *Función en desarrollo*
+    // Create a Lightning invoice for funding
+    const invoice = await createSparkLightningInvoiceByTelegramId(
+      telegramId || 950870644, 
+      amountSats, 
+      `Fondeo de wallet: ${amount} BTC`
+    );
+    
+    const message = `✅ *Wallet listo para fondeo*
 
-La función de fondeo está siendo migrada al nuevo SDK de Spark.
-Próximamente estará disponible.`;
+💰 Cantidad: ${amount} BTC
+⚡ Invoice Lightning: \`${invoice}\`
+
+💡 *Instrucciones:*
+1. Copia el invoice Lightning
+2. Págalo con tu wallet Lightning
+3. Los fondos aparecerán en tu balance
+
+🔗 *Para pagar:* Usa el comando /pay_invoice seguido del invoice`;
     
     await bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
     
     return {
-      success: false,
-      message: 'Función de fondeo en desarrollo'
+      success: true,
+      message: `Wallet preparado para fondeo de ${amount} BTC`
     };
   } catch (error) {
     const errorMessage = formatErrorMessage(error);
@@ -753,7 +767,7 @@ Próximamente estará disponible.`;
     
     return {
       success: false,
-      message: 'Error al fondear wallet',
+      message: 'Error al preparar fondeo de wallet',
       error: errorMessage
     };
   }

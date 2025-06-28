@@ -149,7 +149,20 @@ export function formatHelpMessage(): string {
 /claim \\<txid\\> \\- Reclamar depósito on\\-chain después de confirmaciones
 /withdraw \\<cantidad\\> \\<dirección\\> \\- Retirar BTC on\\-chain
 
-*💵 Operaciones USD \\(UMA\\):*
+*🪙 Operaciones LRC\\-20 Tokens:*
+/tokens \\- Ver saldos de tokens LRC\\-20
+/transfer \\<token\\> \\<cantidad\\> \\<dirección\\> \\- Transferir tokens LRC\\-20
+/tokeninfo \\<pubkey\\> \\- Obtener información de un token
+
+*🌐 Operaciones UMA \\(Cross\\-Currency\\):*
+/uma\\_address \\- Ver tu dirección UMA para pagos cross\\-currency
+/send\\_uma \\<cantidad\\> \\<moneda\\> \\<dirección\\> \\- Enviar pago UMA
+/quote\\_uma \\<cantidad\\> \\<origen\\> \\<destino\\> \\- Obtener cotización UMA
+/uma\\_history \\- Ver historial de pagos UMA
+/uma\\_test \\- Probar conectividad UMA
+/uma\\_help \\- Ayuda específica de UMA
+
+*💵 Operaciones USD \\(Legacy\\):*
 /withdraw\\_usd \\<cantidad\\> \\- Retirar USD \\(próximamente con UMA\\)
 /convert\\_btc \\<cantidad\\> \\- Convertir BTC a USD \\(próximamente\\)
 /convert\\_usd \\<cantidad\\> \\- Convertir USD a BTC \\(próximamente\\)
@@ -166,11 +179,36 @@ export function formatHelpMessage(): string {
 /withdraw 0\\.0005 bc1q... \\- Retirar 0\\.0005 BTC a dirección
 /spark\\_address \\- Ver tu dirección Spark para transferencias internas
 
+*📝 Ejemplos de uso LRC\\-20:*
+/tokens \\- Ver todos tus tokens LRC\\-20
+/transfer abc123... 100 bc1q... \\- Transferir 100 tokens
+/tokeninfo abc123... \\- Ver información del token
+
+*📝 Ejemplos de uso UMA:*
+/uma\\_address \\- Ver tu dirección UMA
+/send\\_uma 50 USD user123@bitnob\\.btc \\- Enviar 50 USD
+/quote\\_uma 100 USD BTC \\- Cotizar 100 USD a BTC
+/uma\\_history \\- Ver pagos UMA recientes
+
 *💡 Consejos Lightning:*
 • Los pagos Lightning se confirman en segundos
 • Las facturas expiran en 24 horas
 • Usa /balance para sincronizar pagos automáticamente
 • Asegúrate de estar en la misma red \\(testnet/mainnet\\)
+
+*💡 Consejos LRC\\-20:*
+• Los tokens LRC\\-20 son tokens nativos de Bitcoin
+• Las transferencias usan la red Bitcoin
+• Las fees son mínimas
+• Confirmación en 1\\-3 bloques
+• Soporta cualquier token LRC\\-20
+
+*💡 Consejos UMA:*
+• Comparte tu dirección UMA para recibir pagos
+• Los pagos se convierten automáticamente
+• Las fees son mínimas \\(0\\.1%\\)
+• Confirmación en 2\\-5 minutos
+• Soporta BTC, USD, EUR, GBP
 
 *💬 Lenguaje natural:*
 También puedes escribir comandos en lenguaje natural:
@@ -179,6 +217,7 @@ También puedes escribir comandos en lenguaje natural:
 "Convierte 0\\.01 BTC a USD"
 "¿Cuál es mi saldo?"
 "Muéstrame mis transacciones"
+"Transfiere 100 tokens"
 
 *🔒 Seguridad:*
 • Cada usuario tiene su propio ID único

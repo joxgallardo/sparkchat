@@ -11,6 +11,12 @@ import {
   claimSparkDepositByTelegramId,
   getSparkAddressByTelegramId
 } from '@/services/spark';
+import { 
+  sendUMAPayment, 
+  getUMAQuote, 
+  generateUMAAddress,
+  validateUMAAddress 
+} from '@/services/uma';
 
 // In a real app, you'd get userId from authentication context (e.g., session, token)
 // For this prototype, we'll simulate it or expect it to be passed.
@@ -23,9 +29,11 @@ export async function fetchBalancesAction(telegramId: number = MOCK_TELEGRAM_ID)
     // Convert satoshis to BTC
     const btcBalance = balance / 100_000_000;
     
-    // For now, USD balance is 0 (will be implemented with UMA/tokens later)
-    // TODO: Calculate USD balance from tokenBalances when UMA is implemented
-    const usdBalance = 0;
+    // Calculate USD balance from UMA conversions
+    // For now, we'll use a mock USD balance based on BTC holdings
+    // In production, this would be tracked separately via UMA
+    const btcToUsdQuote = await getUMAQuote('BTC', 'USD', btcBalance);
+    const usdBalance = btcToUsdQuote.convertedAmount;
     
     return {
       btc: btcBalance,
@@ -82,9 +90,46 @@ export async function depositBTCAction(amount: number, telegramId: number = MOCK
 
 export async function withdrawUSDAction(amount: number, targetAddress: string = "mock_target_address", telegramId: number = MOCK_TELEGRAM_ID): Promise<{ newUsdBalance: number; transaction: Transaction }> {
   try {
-    // For now, USD withdrawals are not implemented (will be implemented with UMA)
-    // This is a placeholder for future UMA integration
-    throw new Error('USD withdrawals not yet implemented - will be available with UMA integration');
+    console.log(`UMA ACTION: Processing USD withdrawal of ${amount} USD to ${targetAddress}`);
+    
+    // Validate if targetAddress is a UMA address
+    if (!validateUMAAddress(targetAddress)) {
+      throw new Error('Invalid UMA address format. Expected format: username@domain.btc');
+    }
+    
+    // Get current balances
+    const { btc: currentBtc, usd: currentUsd } = await fetchBalancesAction(telegramId);
+    
+    // Check if user has sufficient USD balance
+    if (currentUsd < amount) {
+      throw new Error(`Insufficient USD balance. Required: ${amount} USD, Available: ${currentUsd} USD`);
+    }
+    
+    // Send UMA payment for USD withdrawal
+    const umaResult = await sendUMAPayment(telegramId, targetAddress, amount, 'USD', 'USD withdrawal');
+    
+    if (!umaResult.success) {
+      throw new Error(`UMA payment failed: ${umaResult.error}`);
+    }
+    
+    // Calculate new USD balance (subtract withdrawn amount)
+    const newUsdBalance = currentUsd - amount;
+    
+    // Create transaction record
+    const transaction: Transaction = {
+      id: umaResult.paymentId || `withdraw_usd_${Date.now()}`,
+      type: 'withdrawal',
+      amount: amount,
+      currency: 'USD',
+      timestamp: new Date(),
+      description: `Retiro USD de ${amount} USD a ${targetAddress}`,
+      status: 'COMPLETED'
+    };
+    
+    return {
+      newUsdBalance,
+      transaction
+    };
   } catch (error) {
     console.error('Error processing USD withdrawal:', error);
     throw new Error(`Failed to process USD withdrawal: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -93,9 +138,39 @@ export async function withdrawUSDAction(amount: number, targetAddress: string = 
 
 export async function convertBTCToUSDAction(btcAmount: number, telegramId: number = MOCK_TELEGRAM_ID): Promise<{ newBtcBalance: number; newUsdBalance: number; transaction: Transaction }> {
   try {
-    // For now, BTC to USD conversion is not implemented (will be implemented with UMA)
-    // This is a placeholder for future UMA integration
-    throw new Error('BTC to USD conversion not yet implemented - will be available with UMA integration');
+    console.log(`UMA ACTION: Converting ${btcAmount} BTC to USD`);
+    
+    // Get current balances
+    const { btc: currentBtc, usd: currentUsd } = await fetchBalancesAction(telegramId);
+    
+    // Check if user has sufficient BTC balance
+    if (currentBtc < btcAmount) {
+      throw new Error(`Insufficient BTC balance. Required: ${btcAmount} BTC, Available: ${currentBtc} BTC`);
+    }
+    
+    // Get UMA quote for BTC to USD conversion
+    const quote = await getUMAQuote('BTC', 'USD', btcAmount);
+    
+    // Calculate new balances
+    const newBtcBalance = currentBtc - btcAmount;
+    const newUsdBalance = currentUsd + quote.convertedAmount;
+    
+    // Create transaction record
+    const transaction: Transaction = {
+      id: `convert_btc_usd_${Date.now()}`,
+      type: 'conversion',
+      amount: btcAmount,
+      currency: 'BTC',
+      timestamp: new Date(),
+      description: `Conversión de ${btcAmount} BTC a ${quote.convertedAmount.toFixed(2)} USD (Tasa: ${quote.exchangeRate.toFixed(2)})`,
+      status: 'COMPLETED'
+    };
+    
+    return {
+      newBtcBalance,
+      newUsdBalance,
+      transaction
+    };
   } catch (error) {
     console.error('Error processing BTC to USD conversion:', error);
     throw new Error(`Failed to process BTC to USD conversion: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -104,9 +179,39 @@ export async function convertBTCToUSDAction(btcAmount: number, telegramId: numbe
 
 export async function convertUSDToBTCAction(usdAmount: number, telegramId: number = MOCK_TELEGRAM_ID): Promise<{ newUsdBalance: number; newBtcBalance: number; transaction: Transaction }> {
   try {
-    // For now, USD to BTC conversion is not implemented (will be implemented with UMA)
-    // This is a placeholder for future UMA integration
-    throw new Error('USD to BTC conversion not yet implemented - will be available with UMA integration');
+    console.log(`UMA ACTION: Converting ${usdAmount} USD to BTC`);
+    
+    // Get current balances
+    const { btc: currentBtc, usd: currentUsd } = await fetchBalancesAction(telegramId);
+    
+    // Check if user has sufficient USD balance
+    if (currentUsd < usdAmount) {
+      throw new Error(`Insufficient USD balance. Required: ${usdAmount} USD, Available: ${currentUsd} USD`);
+    }
+    
+    // Get UMA quote for USD to BTC conversion
+    const quote = await getUMAQuote('USD', 'BTC', usdAmount);
+    
+    // Calculate new balances
+    const newUsdBalance = currentUsd - usdAmount;
+    const newBtcBalance = currentBtc + quote.convertedAmount;
+    
+    // Create transaction record
+    const transaction: Transaction = {
+      id: `convert_usd_btc_${Date.now()}`,
+      type: 'conversion',
+      amount: usdAmount,
+      currency: 'USD',
+      timestamp: new Date(),
+      description: `Conversión de ${usdAmount} USD a ${quote.convertedAmount.toFixed(8)} BTC (Tasa: ${quote.exchangeRate.toFixed(8)})`,
+      status: 'COMPLETED'
+    };
+    
+    return {
+      newUsdBalance,
+      newBtcBalance,
+      transaction
+    };
   } catch (error) {
     console.error('Error processing USD to BTC conversion:', error);
     throw new Error(`Failed to process USD to BTC conversion: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -160,5 +265,52 @@ export async function getSparkAddressAction(telegramId: number = MOCK_TELEGRAM_I
   } catch (error) {
     console.error('Error getting Spark address:', error);
     throw new Error(`Failed to get Spark address: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+
+// New UMA-specific actions
+
+export async function getUMAAddressAction(telegramId: number = MOCK_TELEGRAM_ID): Promise<string> {
+  try {
+    return await generateUMAAddress(telegramId);
+  } catch (error) {
+    console.error('Error getting UMA address:', error);
+    throw new Error(`Failed to get UMA address: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+
+export async function sendUMAPaymentAction(
+  toUMAAddress: string, 
+  amount: number, 
+  currency: 'BTC' | 'USD' | 'EUR' | 'GBP',
+  memo?: string,
+  telegramId: number = MOCK_TELEGRAM_ID
+): Promise<{ success: boolean; paymentId?: string; transaction: Transaction }> {
+  try {
+    const umaResult = await sendUMAPayment(telegramId, toUMAAddress, amount, currency, memo);
+    
+    if (!umaResult.success) {
+      throw new Error(`UMA payment failed: ${umaResult.error}`);
+    }
+    
+    // Create transaction record
+    const transaction: Transaction = {
+      id: umaResult.paymentId || `uma_payment_${Date.now()}`,
+      type: 'payment',
+      amount: amount,
+      currency: currency,
+      timestamp: new Date(),
+      description: `Pago UMA de ${amount} ${currency} a ${toUMAAddress}${memo ? ` - ${memo}` : ''}`,
+      status: 'COMPLETED'
+    };
+    
+    return {
+      success: true,
+      paymentId: umaResult.paymentId,
+      transaction
+    };
+  } catch (error) {
+    console.error('Error sending UMA payment:', error);
+    throw new Error(`Failed to send UMA payment: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }
