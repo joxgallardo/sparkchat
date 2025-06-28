@@ -12,7 +12,16 @@
     "typecheck": "tsc --noEmit",
     "bot:dev": "tsx src/bot/index.ts",
     "bot:clean": "pkill -f 'tsx src/bot/index.ts' || true",
-    "bot:start": "npm run bot:clean && sleep 2 && npm run bot:dev"
+    "bot:start": "npm run bot:clean && sleep 2 && npm run bot:dev",
+    "deploy:check": "node scripts/deploy-to-production.js",
+    "deploy:vercel": "vercel --prod",
+    "deploy:setup": "npm run deploy:check && npm run deploy:vercel",
+    "test:comprehensive": "node scripts/test-step11-comprehensive.js",
+    "test:mainnet": "node scripts/test-mainnet.js",
+    "switch:mainnet": "node scripts/switch-to-mainnet.js",
+    "switch:testnet": "node scripts/switch-to-testnet.js",
+    "generate:mnemonic": "node scripts/generate-master-mnemonic.js",
+    "health:check": "curl -s https://your-app.vercel.app/api/health || echo 'Health check failed - app not deployed'"
   },
   "dependencies": {
     "@buildonspark/lrc20-sdk": "^0.0.57",
@@ -44,6 +53,7 @@
     "@types/bip32": "^1.0.2",
     "@types/jsonwebtoken": "^9.0.10",
     "@uma-sdk/core": "^0.1.0",
+    "@vercel/node": "^5.3.0",
     "bip32": "^5.0.0-rc.0",
     "bip39": "^3.1.0",
     "class-variance-authority": "^0.7.1",
