@@ -21,6 +21,8 @@ export interface TelegramUser {
   firstName?: string;
   lastName?: string;
   isActive: boolean;
+  accountNumber: number; // Spark account number for wallet derivation
+  umaAddress: string; // UMA address in format usuario@sparkchat.btc
   createdAt: Date;
   lastSeen: Date;
 }

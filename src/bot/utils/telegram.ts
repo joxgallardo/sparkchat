@@ -134,24 +134,43 @@ export function formatHelpMessage(): string {
 /help \\- Mostrar esta ayuda
 
 *📊 Información:*
-/balance \\- Ver saldos de BTC y USD
+/balance \\- Ver saldos de BTC y USD \\(sincroniza Lightning automáticamente\\)
 /transactions \\- Ver historial de transacciones
 /status \\- Estado del bot y tu sesión
 
-*💰 Operaciones de wallet:*
-/deposit \\<cantidad\\> \\- Depositar BTC
-/withdraw \\<cantidad\\> \\- Retirar USD
-/convert\\_btc \\<cantidad\\> \\- Convertir BTC a USD
-/convert\\_usd \\<cantidad\\> \\- Convertir USD a BTC
+*⚡ Operaciones Lightning:*
+/deposit \\<cantidad\\> \\- Generar factura Lightning para recibir BTC
+/deposit \\- Obtener dirección on\\-chain para depósito de BTC
+/pay \\<invoice\\> \\- Pagar factura Lightning a otros
+/spark\\_address \\- Obtener dirección Spark para transferencias internas
+
+*🔗 Operaciones On\\-Chain:*
+/deposit\\_address \\- Obtener dirección on\\-chain \\(mismo que /deposit\\)
+/claim \\<txid\\> \\- Reclamar depósito on\\-chain después de confirmaciones
+/withdraw \\<cantidad\\> \\<dirección\\> \\- Retirar BTC on\\-chain
+
+*💵 Operaciones USD \\(UMA\\):*
+/withdraw\\_usd \\<cantidad\\> \\- Retirar USD \\(próximamente con UMA\\)
+/convert\\_btc \\<cantidad\\> \\- Convertir BTC a USD \\(próximamente\\)
+/convert\\_usd \\<cantidad\\> \\- Convertir USD a BTC \\(próximamente\\)
 
 *🤖 Asistente de ahorro:*
 /savings\\_advice \\- Obtener consejos de ahorro personalizados
 
-*📝 Ejemplos de uso:*
-/deposit 0\\.001
-/withdraw 50
-/convert\\_btc 0\\.01
-/convert\\_usd 100
+*📝 Ejemplos de uso Lightning:*
+/deposit 0\\.001 \\- Generar invoice Lightning por 0\\.001 BTC
+/deposit 100000 sats \\- Generar invoice Lightning por 100,000 satoshis
+/deposit \\- Obtener dirección on\\-chain para enviar BTC
+/pay lnbc1... \\- Pagar factura Lightning
+/claim abc123def456... \\- Reclamar depósito on\\-chain con TXID
+/withdraw 0\\.0005 bc1q... \\- Retirar 0\\.0005 BTC a dirección
+/spark\\_address \\- Ver tu dirección Spark para transferencias internas
+
+*💡 Consejos Lightning:*
+• Los pagos Lightning se confirman en segundos
+• Las facturas expiran en 24 horas
+• Usa /balance para sincronizar pagos automáticamente
+• Asegúrate de estar en la misma red \\(testnet/mainnet\\)
 
 *💬 Lenguaje natural:*
 También puedes escribir comandos en lenguaje natural:
@@ -165,6 +184,7 @@ También puedes escribir comandos en lenguaje natural:
 • Cada usuario tiene su propio ID único
 • Tus datos están seguros y privados
 • Las sesiones se manejan automáticamente
+• Wallets autocustodiadas con Spark
 
 *❓ ¿Necesitas ayuda?*
 Si tienes problemas, escribe /help o contacta al soporte\\.`;

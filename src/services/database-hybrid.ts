@@ -24,7 +24,46 @@ if (!MOCK_USER_DB.has(DEFAULT_USER_ID)) {
     lightsparkWalletId: DEFAULT_WALLET_ID,
   });
 }
+
+// Mock account number counter
+let MOCK_ACCOUNT_NUMBER_COUNTER = 1;
+
 // --- END MOCK DATABASE ---
+
+// Helper function to generate UMA address
+function generateUMAAddress(username: string | undefined, accountNumber: number): string {
+  const prefix = username && username.trim() !== '' ? username : 'user';
+  return `${prefix}${accountNumber}@sparkchat.btc`;
+}
+
+// Helper function to get next available account number
+async function getNextAccountNumber(): Promise<number> {
+  if (shouldUseRealDatabase()) {
+    try {
+      // Get the maximum account_number from telegram_users
+      const { data, error } = await supabase
+        .from('telegram_users')
+        .select('account_number')
+        .order('account_number', { ascending: false })
+        .limit(1)
+        .single();
+        
+      if (error && error.code !== 'PGRST116') { // PGRST116 is "no rows returned"
+        console.error('Error getting next account number:', error);
+        throw error;
+      }
+      
+      // If no users exist, start with 1, otherwise increment the max
+      return data ? data.account_number + 1 : 1;
+    } catch (error) {
+      console.error('Supabase error getting next account number:', error);
+      console.log('Falling back to mock counter');
+    }
+  }
+  
+  // Mock implementation
+  return ++MOCK_ACCOUNT_NUMBER_COUNTER;
+}
 
 // Telegram User Management Functions
 export async function getTelegramUser(telegramId: number): Promise<TelegramUser | null> {
@@ -50,6 +89,8 @@ export async function getTelegramUser(telegramId: number): Promise<TelegramUser 
           firstName: data.first_name,
           lastName: data.last_name,
           isActive: data.is_active,
+          accountNumber: data.account_number,
+          umaAddress: data.uma_address,
           createdAt: new Date(data.created_at),
           lastSeen: new Date(data.last_seen)
         };
@@ -69,9 +110,13 @@ export async function getTelegramUser(telegramId: number): Promise<TelegramUser 
   return MOCK_TELEGRAM_USER_DB.get(telegramId) || null;
 }
 
-export async function createTelegramUser(telegramUser: Omit<TelegramUser, 'createdAt' | 'lastSeen'>): Promise<TelegramUser> {
+export async function createTelegramUser(telegramUser: Omit<TelegramUser, 'createdAt' | 'lastSeen' | 'accountNumber' | 'umaAddress'>): Promise<TelegramUser> {
   if (shouldUseRealDatabase()) {
     try {
+      // Get next available account number
+      const accountNumber = await getNextAccountNumber();
+      const umaAddress = generateUMAAddress(telegramUser.username, accountNumber);
+      
       const { data, error } = await supabase
         .from('telegram_users')
         .insert({
@@ -80,7 +125,9 @@ export async function createTelegramUser(telegramUser: Omit<TelegramUser, 'creat
           username: telegramUser.username,
           first_name: telegramUser.firstName,
           last_name: telegramUser.lastName,
-          is_active: telegramUser.isActive
+          is_active: telegramUser.isActive,
+          account_number: accountNumber,
+          uma_address: umaAddress
         })
         .select()
         .single();
@@ -104,6 +151,8 @@ export async function createTelegramUser(telegramUser: Omit<TelegramUser, 'creat
         firstName: data.first_name,
         lastName: data.last_name,
         isActive: data.is_active,
+        accountNumber: data.account_number,
+        umaAddress: data.uma_address,
         createdAt: new Date(data.created_at),
         lastSeen: new Date(data.last_seen)
       };
@@ -117,8 +166,13 @@ export async function createTelegramUser(telegramUser: Omit<TelegramUser, 'creat
   console.log(`DATABASE SERVICE: Creating Telegram user: ${telegramUser.telegramId} (MOCK)`);
   await new Promise(resolve => setTimeout(resolve, 50));
   
+  const accountNumber = await getNextAccountNumber();
+  const umaAddress = generateUMAAddress(telegramUser.username, accountNumber);
+  
   const newUser: TelegramUser = {
     ...telegramUser,
+    accountNumber,
+    umaAddress,
     createdAt: new Date(),
     lastSeen: new Date()
   };
@@ -163,6 +217,58 @@ export async function updateTelegramUserLastSeen(telegramId: number): Promise<vo
     user.lastSeen = new Date();
     MOCK_TELEGRAM_USER_DB.set(telegramId, user);
   }
+}
+
+export async function getTelegramUserByAccountNumber(accountNumber: number): Promise<TelegramUser | null> {
+  if (shouldUseRealDatabase()) {
+    try {
+      const { data, error } = await supabase
+        .from('telegram_users')
+        .select('*')
+        .eq('account_number', accountNumber)
+        .single();
+        
+      if (error) {
+        console.error('Error fetching Telegram user by account number:', error);
+        return null;
+      }
+      
+      if (data) {
+        // Transform database format to our interface
+        return {
+          telegramId: data.telegram_id,
+          sparkChatUserId: data.spark_chat_user_id,
+          username: data.username,
+          firstName: data.first_name,
+          lastName: data.last_name,
+          isActive: data.is_active,
+          accountNumber: data.account_number,
+          umaAddress: data.uma_address,
+          createdAt: new Date(data.created_at),
+          lastSeen: new Date(data.last_seen)
+        };
+      }
+      
+      return null;
+    } catch (error) {
+      console.error('Supabase error:', error);
+      // Fallback to mock
+      console.log('Falling back to mock database');
+    }
+  }
+  
+  // Mock implementation
+  console.log(`DATABASE SERVICE: Fetching Telegram user by account number: ${accountNumber} (MOCK)`);
+  await new Promise(resolve => setTimeout(resolve, 50));
+  
+  // Find user by account number in mock database
+  for (const user of MOCK_TELEGRAM_USER_DB.values()) {
+    if (user.accountNumber === accountNumber) {
+      return user;
+    }
+  }
+  
+  return null;
 }
 
 export async function getOrCreateTelegramUser(

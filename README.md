@@ -1,6 +1,6 @@
 # SparkChat
 
-Bot de Telegram para gestionar Bitcoin y USD de forma inteligente usando Lightspark.
+Bot de Telegram para gestionar Bitcoin y USD de forma inteligente usando Spark SDK (self-custodial).
 
 ## 🚀 Características
 
@@ -11,7 +11,7 @@ Bot de Telegram para gestionar Bitcoin y USD de forma inteligente usando Lightsp
 - 💬 **Lenguaje natural**: Comandos en español natural
 - 🔒 **Sesiones seguras**: Manejo automático de autenticación
 - 🗄️ **Base de datos persistente**: Integración con Supabase
-- ⚡ **Lightning Network**: Integración real con Lightspark
+- ⚡ **Lightning Network**: Integración real con Spark SDK (self-custodial)
 
 ## 📋 Estado del Proyecto
 
@@ -19,9 +19,8 @@ Bot de Telegram para gestionar Bitcoin y USD de forma inteligente usando Lightsp
 - [x] **Paso 1**: Crear Telegram Bot base
 - [x] **Paso 2**: Migrar AI command processing
 - [x] **Paso 3**: User management para Telegram
-- [x] **Paso 4**: Habilitar Lightspark real
+- [x] **Paso 4**: Migración completa a Spark SDK self-custodial
 - [x] **Base de datos híbrida**: Supabase + Mock fallback
-- [x] **Autenticación JWT**: Integración completa con Lightspark SDK
 
 ### 🔄 En Progreso
 - [ ] **Paso 5**: Testing real Bitcoin operations
@@ -32,24 +31,20 @@ Bot de Telegram para gestionar Bitcoin y USD de forma inteligente usando Lightsp
 - [ ] **Paso 8**: Security & error handling
 - [ ] **Paso 9**: Deployment
 
-## ⚡ Lightspark Integration
+## ⚡ Spark SDK Integration
 
 ### Características Implementadas
 
-- ✅ **Autenticación JWT**: Integración segura con Lightspark
-- ✅ **Gestión de balances**: Consulta de saldos BTC y USD
-- ✅ **Historial de transacciones**: Transacciones Lightning Network
+- ✅ **Gestión de wallets self-custodial**: Spark SDK
+- ✅ **Gestión de balances**: Consulta de saldos BTC y tokens
+- ✅ **Historial de transacciones**: Transacciones Lightning y on-chain
 - ✅ **Creación de invoices**: Depósitos via Lightning Network
 - ✅ **Modo mock**: Desarrollo sin credenciales reales
 
-### Configuración de Lightspark
+### Configuración de Spark SDK
 
-1. **Crear cuenta**: [https://app.lightspark.com](https://app.lightspark.com)
-2. **Obtener credenciales**: Account ID y JWT Token
-3. **Configurar variables**: Ver `env.example`
-4. **Probar integración**: `npx tsx src/services/test-lightspark-integration.ts`
-
-📖 **Guía completa**: [docs/lightspark-setup.md](docs/lightspark-setup.md)
+1. **Configurar variables**: Ver `env.example`
+2. **Probar integración**: `npm run dev` o scripts de prueba en `scripts/`
 
 ## 🗄️ Base de Datos
 
@@ -86,10 +81,9 @@ Copia `env.example` a `.env.local`:
 # Telegram Bot Configuration
 TELEGRAM_BOT_TOKEN=your_telegram_bot_token_here
 
-# Lightspark Configuration (JWT Authentication)
-LIGHTSPARK_ACCOUNT_ID=your_lightspark_account_id
-LIGHTSPARK_JWT_TOKEN=your_lightspark_jwt_token
-LIGHTSPARK_NODE_ID=your_node_id_optional
+# Spark Configuration (Self-custodial wallet)
+SPARK_NETWORK=TESTNET
+SPARK_MASTER_MNEMONIC=your_master_mnemonic_here
 
 # Supabase Configuration
 SUPABASE_URL=https://your-project.supabase.co
@@ -98,7 +92,6 @@ SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key_here
 
 # Environment
 NODE_ENV=development
-USE_MOCK_CLIENT=true
 USE_MOCK_DATABASE=false
 ```
 
@@ -109,14 +102,13 @@ USE_MOCK_DATABASE=false
 3. Sigue las instrucciones para crear tu bot
 4. Copia el token y agrégalo a tu archivo `.env.local`
 
-### 4. Configurar Lightspark (Opcional)
+### 4. Configurar Spark SDK (Opcional)
 
 Para usar operaciones reales de Bitcoin:
 
-1. Crea una cuenta en [Lightspark](https://app.lightspark.com)
-2. Obtén tu Account ID y JWT Token
-3. Configura las variables en `.env.local`
-4. Establece `USE_MOCK_CLIENT=false`
+1. Genera o configura tu mnemónico maestro (`SPARK_MASTER_MNEMONIC`)
+2. Establece la red (`SPARK_NETWORK=TESTNET` o `MAINNET`)
+3. Si no configuras un mnemónico, se generará uno automáticamente
 
 ### 5. Configurar Supabase (Opcional)
 
@@ -147,9 +139,6 @@ npx tsx src/bot/test-user-management.ts
 
 # Probar integración con Supabase
 npx tsx src/bot/test-supabase-integration.ts
-
-# Probar integración con Lightspark
-npx tsx src/services/test-lightspark-integration.ts
 ```
 
 ## 📱 Uso del Bot
@@ -159,15 +148,15 @@ npx tsx src/services/test-lightspark-integration.ts
 - `/start` - Iniciar el bot y registro automático
 - `/help` - Ver todos los comandos disponibles
 - `/profile` - Ver tu perfil completo
-- `/balance` - Ver saldos de BTC y USD
+- `/balance` - Ver saldos de BTC y tokens
 - `/transactions` - Ver historial de transacciones
 
 ### Operaciones de Wallet
 
 - `/deposit <cantidad>` - Depositar BTC
-- `/withdraw <cantidad>` - Retirar USD
-- `/convert_btc <cantidad>` - Convertir BTC a USD
-- `/convert_usd <cantidad>` - Convertir USD a BTC
+- `/withdraw <cantidad>` - Retirar BTC
+- `/convert_btc <cantidad>` - Convertir BTC a tokens
+- `/convert_token <cantidad>` - Convertir tokens a BTC
 
 ### Lenguaje Natural
 
@@ -175,7 +164,7 @@ También puedes escribir comandos en español natural:
 
 - "Deposita 0.001 BTC"
 - "Retira 50 USD"
-- "Convierte 0.01 BTC a USD"
+- "Convierte 0.01 BTC a tokens"
 - "¿Cuál es mi saldo?"
 - "Muéstrame mis transacciones"
 
@@ -191,20 +180,19 @@ src/
 │   ├── services/          # Servicios del bot
 │   └── utils/             # Utilidades de Telegram
 ├── services/              # Servicios principales
+│   ├── spark.ts           # Integración con Spark SDK
 │   ├── database-hybrid.ts # Base de datos híbrida
 │   ├── supabase.ts        # Cliente de Supabase
 │   ├── userManager.ts     # Gestión de usuarios
-│   └── lightspark.ts      # Integración con Lightspark
 ├── ai/                    # Flows de IA
 │   └── flows/            # Procesamiento de comandos
 └── app/                   # Aplicación web
-    └── actions.ts         # Acciones del servidor
 ```
 
 ### Sistema de Gestión de Usuarios
 
 ```
-Telegram User ID → SparkChat User ID → Lightspark Wallet
+Telegram User ID → SparkChat User ID → Spark SDK Wallet
 ```
 
 - **Registro automático**: Los usuarios se registran al usar cualquier comando
@@ -259,8 +247,8 @@ El sistema registra:
 - [x] Integración con AI flows existentes
 - [x] Sistema de gestión de usuarios
 
-### Fase 2: Real Lightspark Integration 🔄
-- [ ] Habilitar Lightspark real
+### Fase 2: Real Spark SDK Integration 🔄
+- [ ] Migración completa a Spark SDK self-custodial
 - [ ] Testing con Bitcoin real en testnet
 
 ### Fase 3: UMA Integration para USD 📅

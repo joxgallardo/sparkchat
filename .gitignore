@@ -47,3 +47,12 @@ firestore-debug.log
 # lightspark keys
 /keys/
 *.pem
+
+# Spark SDK repository (cloned for reference)
+spark/
+
+# Bitcoin Core data
+~/.bitcoin/
+
+# Logs
+*.log

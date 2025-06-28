@@ -53,17 +53,31 @@ export function processSimpleCommand(command: string): SimpleCommandResult {
     };
   }
   
-  // Withdraw patterns
-  const withdrawMatch = lowerCommand.match(/(?:retira|retirar|retiro)\s+([\d.]+)\s*(?:usd|dólares|dolares)/i);
-  if (withdrawMatch) {
-    const amount = parseFloat(withdrawMatch[1]);
-    console.log('🔍 SimpleCommandProcessor: Detectado intent: withdraw, amount:', amount);
+  // Withdraw patterns - USD
+  const withdrawUsdMatch = lowerCommand.match(/(?:retira|retirar|retiro)\s+([\d.]+)\s*(?:usd|dólares|dolares)/i);
+  if (withdrawUsdMatch) {
+    const amount = parseFloat(withdrawUsdMatch[1]);
+    console.log('🔍 SimpleCommandProcessor: Detectado intent: withdraw_usd, amount:', amount);
     return {
       success: true,
-      intent: 'withdraw',
+      intent: 'withdraw_usd',
       amount: amount,
       currency: 'usd',
       message: `Comando procesado: Retirar ${amount} USD`
+    };
+  }
+  
+  // Withdraw patterns - BTC
+  const withdrawBtcMatch = lowerCommand.match(/(?:retira|retirar|retiro)\s+([\d.]+)\s*(?:btc|bitcoin)/i);
+  if (withdrawBtcMatch) {
+    const amount = parseFloat(withdrawBtcMatch[1]);
+    console.log('🔍 SimpleCommandProcessor: Detectado intent: withdraw_btc, amount:', amount);
+    return {
+      success: true,
+      intent: 'withdraw_btc',
+      amount: amount,
+      currency: 'btc',
+      message: `Comando procesado: Retirar ${amount} BTC`
     };
   }
   
@@ -197,7 +211,7 @@ export function validateSimpleCommandParams(
 ): { valid: boolean; error?: string } {
   
   // Validate amount for operations that require it
-  if (['deposit', 'withdraw', 'convert_to_usd', 'convert_to_btc', 'fund_wallet'].includes(intent)) {
+  if (['deposit', 'withdraw_btc', 'withdraw_usd', 'convert_to_usd', 'convert_to_btc', 'fund_wallet'].includes(intent)) {
     if (!amount || amount <= 0) {
       return { 
         valid: false, 
@@ -214,7 +228,14 @@ export function validateSimpleCommandParams(
     };
   }
   
-  if (intent === 'withdraw' && currency?.toLowerCase() !== 'usd') {
+  if (intent === 'withdraw_btc' && currency?.toLowerCase() !== 'btc') {
+    return { 
+      valid: false, 
+      error: 'Solo se pueden retirar Bitcoin (BTC)' 
+    };
+  }
+  
+  if (intent === 'withdraw_usd' && currency?.toLowerCase() !== 'usd') {
     return { 
       valid: false, 
       error: 'Solo se pueden retirar USD' 

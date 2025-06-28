@@ -6,6 +6,11 @@ import {
   handleUSDWithdrawal,
   handleBTCToUSDConversion,
   handleUSDToBTCConversion,
+  handleDepositAddress,
+  handleClaimDeposit,
+  handleBTCWithdrawal,
+  handleLightningPayment,
+  handleSparkAddress,
   validateWalletOperation
 } from './wallet';
 import { getSavingsAdvice } from '../services/commandProcessor';
@@ -17,6 +22,57 @@ import {
 } from '../utils/telegram';
 import { withSession, SessionContext, getSparkChatUserId } from '../middleware/session';
 import { getUserStats } from '@/services/userManager';
+
+/**
+ * Validate Bitcoin address format
+ * Supports mainnet (bc1, 1, 3) and testnet (tb1, 2, m, n) addresses
+ */
+function isValidBitcoinAddress(address: string): boolean {
+  if (!address || typeof address !== 'string') {
+    return false;
+  }
+  
+  const trimmedAddress = address.trim();
+  
+  // Check for valid Bitcoin address prefixes
+  const validPrefixes = [
+    // Mainnet
+    'bc1', // Bech32 (SegWit)
+    '1',   // Legacy
+    '3',   // P2SH (SegWit)
+    // Testnet
+    'tb1', // Bech32 testnet
+    '2',   // Legacy testnet
+    'm',   // Legacy testnet
+    'n',   // Legacy testnet
+    // Regtest
+    'bcrt1' // Bech32 regtest
+  ];
+  
+  const hasValidPrefix = validPrefixes.some(prefix => 
+    trimmedAddress.toLowerCase().startsWith(prefix)
+  );
+  
+  if (!hasValidPrefix) {
+    return false;
+  }
+  
+  // Basic length validation
+  // Legacy addresses: 26-35 characters
+  // SegWit addresses: 42-62 characters (Bech32)
+  const length = trimmedAddress.length;
+  if (length < 26 || length > 62) {
+    return false;
+  }
+  
+  // Check for valid characters (alphanumeric, no confusing characters)
+  const validChars = /^[123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz]+$/;
+  if (!validChars.test(trimmedAddress)) {
+    return false;
+  }
+  
+  return true;
+}
 
 export function setupCommandHandlers(bot: TelegramBot) {
   // /start command - Welcome and registration
@@ -32,10 +88,13 @@ export function setupCommandHandlers(bot: TelegramBot) {
 
 ✅ Tu cuenta ha sido registrada automáticamente
 🆔 Tu ID de usuario: \`${user.sparkChatUserId}\`
+🔢 Número de cuenta Spark: \`${user.accountNumber}\`
+🌐 Tu dirección UMA: \`${user.umaAddress}\`
 📅 Registrado: ${user.createdAt.toLocaleDateString('es-ES')}
 
 💡 Usa /help para ver todos los comandos disponibles
 💰 Usa /balance para verificar tu saldo
+👤 Usa /profile para ver tu información completa
 
 *¡Disfruta usando SparkChat!*
     `.trim();
@@ -54,6 +113,8 @@ export function setupCommandHandlers(bot: TelegramBot) {
 ✅ Ya estás registrado en SparkChat
 👤 Usuario: ${user.firstName || user.username || 'Sin nombre'}
 🆔 ID: \`${user.sparkChatUserId}\`
+🔢 Número de cuenta Spark: \`${user.accountNumber}\`
+🌐 Dirección UMA: \`${user.umaAddress}\`
 📅 Registrado: ${user.createdAt.toLocaleDateString('es-ES')}
 🕐 Última actividad: ${user.lastSeen.toLocaleString('es-ES')}
 
@@ -87,8 +148,13 @@ export function setupCommandHandlers(bot: TelegramBot) {
 
 💼 *Información de SparkChat:*
 • ID de Usuario: \`${sparkChatUserId}\`
+• Número de cuenta Spark: \`${stats.accountNumber}\`
 • Estado: ${stats.isActive ? '✅ Activo' : '❌ Inactivo'}
 • Autenticado: ${stats.isAuthenticated ? '✅ Sí' : '❌ No'}
+
+🌐 *Dirección UMA:*
+• \`${stats.umaAddress}\`
+• *Comparte esta dirección para recibir pagos cross-currency*
 
 📅 *Actividad:*
 • Registrado: ${stats.createdAt.toLocaleDateString('es-ES')}
@@ -118,10 +184,10 @@ export function setupCommandHandlers(bot: TelegramBot) {
   // /balance command
   bot.onText(/\/balance/, withSession(async (sessionContext: SessionContext) => {
     const chatId = sessionContext.message.chat.id;
-    const sparkChatUserId = getSparkChatUserId(sessionContext);
+    const telegramId = sessionContext.telegramId;
     
     try {
-      await handleBalanceCheck(bot, chatId, sparkChatUserId);
+      await handleBalanceCheck(bot, chatId, telegramId);
     } catch (error) {
       const errorMessage = formatErrorMessage(error);
       await bot.sendMessage(chatId, errorMessage);
@@ -131,21 +197,51 @@ export function setupCommandHandlers(bot: TelegramBot) {
   // /transactions command
   bot.onText(/\/transactions/, withSession(async (sessionContext: SessionContext) => {
     const chatId = sessionContext.message.chat.id;
-    const sparkChatUserId = getSparkChatUserId(sessionContext);
+    const telegramId = sessionContext.telegramId;
     
     try {
-      await handleTransactionHistory(bot, chatId, sparkChatUserId);
+      await handleTransactionHistory(bot, chatId, telegramId);
     } catch (error) {
       const errorMessage = formatErrorMessage(error);
       await bot.sendMessage(chatId, errorMessage);
     }
   }));
 
-  // /deposit command
-  bot.onText(/\/deposit (.+)/, withSession(async (sessionContext: SessionContext, match) => {
+  // /deposit command - Lightning deposit (improved regex to capture amounts with units)
+  bot.onText(/\/deposit\s+(.+)/, withSession(async (sessionContext: SessionContext, match) => {
     const chatId = sessionContext.message.chat.id;
-    const sparkChatUserId = getSparkChatUserId(sessionContext);
-    const amount = parseFloat(match![1]);
+    const telegramId = sessionContext.telegramId;
+    const amountString = match![1].trim();
+    
+    console.log(`DEPOSIT COMMAND: Parsing amount string: "${amountString}"`);
+    
+    // Parse amount - support both BTC and sats
+    let amount: number;
+    let isSats = false;
+    
+    if (amountString.toLowerCase().includes('sat') || amountString.toLowerCase().includes('sats')) {
+      // Parse as satoshis
+      const satsMatch = amountString.match(/(\d+(?:\.\d+)?)/);
+      if (satsMatch) {
+        const satsAmount = parseFloat(satsMatch[1]);
+        amount = satsAmount / 100_000_000; // Convert sats to BTC
+        isSats = true;
+        console.log(`DEPOSIT COMMAND: Parsed as ${satsAmount} sats = ${amount} BTC`);
+      } else {
+        await bot.sendMessage(chatId, '❌ *Formato inválido*\n\n💡 Ejemplos válidos:\n• `/deposit 0.001` (BTC)\n• `/deposit 100000 sats` (satoshis)\n• `/deposit 0.0001 BTC`');
+        return;
+      }
+    } else {
+      // Parse as BTC
+      amount = parseFloat(amountString);
+      console.log(`DEPOSIT COMMAND: Parsed as ${amount} BTC`);
+    }
+    
+    // Validate amount
+    if (isNaN(amount) || amount <= 0) {
+      await bot.sendMessage(chatId, '❌ *Cantidad inválida*\n\n💡 Ejemplos válidos:\n• `/deposit 0.001` (BTC)\n• `/deposit 100000 sats` (satoshis)\n• `/deposit 0.0001 BTC`');
+      return;
+    }
     
     const validation = validateWalletOperation('deposit', amount, 'btc');
     if (!validation.valid) {
@@ -154,17 +250,84 @@ export function setupCommandHandlers(bot: TelegramBot) {
     }
 
     try {
-      await handleBTCDeposit(bot, chatId, amount, sparkChatUserId);
+      await handleBTCDeposit(bot, chatId, amount, telegramId);
     } catch (error) {
       const errorMessage = formatErrorMessage(error);
       await bot.sendMessage(chatId, errorMessage);
     }
   }));
 
-  // /withdraw command
-  bot.onText(/\/withdraw (.+)/, withSession(async (sessionContext: SessionContext, match) => {
+  // /deposit command without amount - Get on-chain deposit address
+  bot.onText(/\/deposit$/, withSession(async (sessionContext: SessionContext) => {
     const chatId = sessionContext.message.chat.id;
-    const sparkChatUserId = getSparkChatUserId(sessionContext);
+    const telegramId = sessionContext.telegramId;
+    
+    try {
+      await handleDepositAddress(bot, chatId, telegramId);
+    } catch (error) {
+      const errorMessage = formatErrorMessage(error);
+      await bot.sendMessage(chatId, errorMessage);
+    }
+  }));
+
+  // /deposit_address command - Get on-chain deposit address
+  bot.onText(/\/deposit_address/, withSession(async (sessionContext: SessionContext) => {
+    const chatId = sessionContext.message.chat.id;
+    const telegramId = sessionContext.telegramId;
+    
+    try {
+      await handleDepositAddress(bot, chatId, telegramId);
+    } catch (error) {
+      const errorMessage = formatErrorMessage(error);
+      await bot.sendMessage(chatId, errorMessage);
+    }
+  }));
+
+  // /claim command - Claim on-chain deposit
+  bot.onText(/\/claim (.+)/, withSession(async (sessionContext: SessionContext, match) => {
+    const chatId = sessionContext.message.chat.id;
+    const telegramId = sessionContext.telegramId;
+    const txId = match![1];
+    
+    try {
+      await handleClaimDeposit(bot, chatId, txId, telegramId);
+    } catch (error) {
+      const errorMessage = formatErrorMessage(error);
+      await bot.sendMessage(chatId, errorMessage);
+    }
+  }));
+
+  // /withdraw command - BTC withdrawal on-chain
+  bot.onText(/\/withdraw (.+) (.+)/, withSession(async (sessionContext: SessionContext, match) => {
+    const chatId = sessionContext.message.chat.id;
+    const telegramId = sessionContext.telegramId;
+    const amount = parseFloat(match![1]);
+    const btcAddress = match![2];
+    
+    // Validate amount
+    if (!amount || amount <= 0) {
+      await bot.sendMessage(chatId, '❌ La cantidad debe ser mayor a 0');
+      return;
+    }
+    
+    // Validate Bitcoin address format
+    if (!isValidBitcoinAddress(btcAddress)) {
+      await bot.sendMessage(chatId, '❌ Dirección Bitcoin inválida. Debe ser una dirección válida (bc1, tb1, etc.)');
+      return;
+    }
+
+    try {
+      await handleBTCWithdrawal(bot, chatId, amount, btcAddress, telegramId);
+    } catch (error) {
+      const errorMessage = formatErrorMessage(error);
+      await bot.sendMessage(chatId, errorMessage);
+    }
+  }));
+
+  // /withdraw_usd command - USD withdrawal (placeholder for UMA)
+  bot.onText(/\/withdraw_usd (.+)/, withSession(async (sessionContext: SessionContext, match) => {
+    const chatId = sessionContext.message.chat.id;
+    const telegramId = sessionContext.telegramId;
     const amount = parseFloat(match![1]);
     
     const validation = validateWalletOperation('withdraw', amount, 'usd');
@@ -174,47 +337,34 @@ export function setupCommandHandlers(bot: TelegramBot) {
     }
 
     try {
-      await handleUSDWithdrawal(bot, chatId, amount, sparkChatUserId);
+      await handleUSDWithdrawal(bot, chatId, amount, undefined, telegramId);
     } catch (error) {
       const errorMessage = formatErrorMessage(error);
       await bot.sendMessage(chatId, errorMessage);
     }
   }));
 
-  // /convert_btc command
-  bot.onText(/\/convert_btc (.+)/, withSession(async (sessionContext: SessionContext, match) => {
+  // /pay command - Pay Lightning invoice
+  bot.onText(/\/pay (.+)/, withSession(async (sessionContext: SessionContext, match) => {
     const chatId = sessionContext.message.chat.id;
-    const sparkChatUserId = getSparkChatUserId(sessionContext);
-    const amount = parseFloat(match![1]);
+    const telegramId = sessionContext.telegramId;
+    const invoice = match![1];
     
-    const validation = validateWalletOperation('convert_btc_to_usd', amount);
-    if (!validation.valid) {
-      await bot.sendMessage(chatId, `❌ ${validation.error}`);
-      return;
-    }
-
     try {
-      await handleBTCToUSDConversion(bot, chatId, amount, sparkChatUserId);
+      await handleLightningPayment(bot, chatId, invoice, 5, telegramId);
     } catch (error) {
       const errorMessage = formatErrorMessage(error);
       await bot.sendMessage(chatId, errorMessage);
     }
   }));
 
-  // /convert_usd command
-  bot.onText(/\/convert_usd (.+)/, withSession(async (sessionContext: SessionContext, match) => {
+  // /spark_address command - Get Spark address
+  bot.onText(/\/spark_address/, withSession(async (sessionContext: SessionContext) => {
     const chatId = sessionContext.message.chat.id;
-    const sparkChatUserId = getSparkChatUserId(sessionContext);
-    const amount = parseFloat(match![1]);
+    const telegramId = sessionContext.telegramId;
     
-    const validation = validateWalletOperation('convert_usd_to_btc', amount);
-    if (!validation.valid) {
-      await bot.sendMessage(chatId, `❌ ${validation.error}`);
-      return;
-    }
-
     try {
-      await handleUSDToBTCConversion(bot, chatId, amount, sparkChatUserId);
+      await handleSparkAddress(bot, chatId, telegramId);
     } catch (error) {
       const errorMessage = formatErrorMessage(error);
       await bot.sendMessage(chatId, errorMessage);
@@ -269,5 +419,45 @@ export function setupCommandHandlers(bot: TelegramBot) {
     `.trim();
     
     await bot.sendMessage(chatId, statusMessage, { parse_mode: 'Markdown' });
+  }));
+
+  // /convert_btc command - Convert BTC to USD
+  bot.onText(/\/convert_btc (.+)/, withSession(async (sessionContext: SessionContext, match) => {
+    const chatId = sessionContext.message.chat.id;
+    const telegramId = sessionContext.telegramId;
+    const amount = parseFloat(match![1]);
+    
+    const validation = validateWalletOperation('convert_btc_to_usd', amount);
+    if (!validation.valid) {
+      await bot.sendMessage(chatId, `❌ ${validation.error}`);
+      return;
+    }
+
+    try {
+      await handleBTCToUSDConversion(bot, chatId, amount, telegramId);
+    } catch (error) {
+      const errorMessage = formatErrorMessage(error);
+      await bot.sendMessage(chatId, errorMessage);
+    }
+  }));
+
+  // /convert_usd command - Convert USD to BTC
+  bot.onText(/\/convert_usd (.+)/, withSession(async (sessionContext: SessionContext, match) => {
+    const chatId = sessionContext.message.chat.id;
+    const telegramId = sessionContext.telegramId;
+    const amount = parseFloat(match![1]);
+    
+    const validation = validateWalletOperation('convert_usd_to_btc', amount);
+    if (!validation.valid) {
+      await bot.sendMessage(chatId, `❌ ${validation.error}`);
+      return;
+    }
+
+    try {
+      await handleUSDToBTCConversion(bot, chatId, amount, telegramId);
+    } catch (error) {
+      const errorMessage = formatErrorMessage(error);
+      await bot.sendMessage(chatId, errorMessage);
+    }
   }));
 } 

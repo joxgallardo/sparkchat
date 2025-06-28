@@ -17,7 +17,7 @@ export function setupMessageHandlers(bot: TelegramBot) {
   // Handle text messages (natural language commands)
   bot.on('message', withSession(async (sessionContext: SessionContext) => {
     const msg = sessionContext.message;
-    const sparkChatUserId = getSparkChatUserId(sessionContext);
+    const telegramId = sessionContext.telegramId;
     
     console.log('🔍 MessageHandler: Procesando mensaje:', msg.text);
     
@@ -94,40 +94,51 @@ export function setupMessageHandlers(bot: TelegramBot) {
       // Process based on intent using wallet handlers
       switch (result.intent) {
         case 'check_balance':
-          await handleBalanceCheck(bot, chatId, sparkChatUserId);
+          await handleBalanceCheck(bot, chatId, telegramId);
           break;
         
         case 'check_transactions':
-          await handleTransactionHistory(bot, chatId, sparkChatUserId);
+          await handleTransactionHistory(bot, chatId, telegramId);
           break;
         
         case 'deposit':
           if (result.amount) {
-            await handleBTCDeposit(bot, chatId, result.amount, sparkChatUserId);
+            await handleBTCDeposit(bot, chatId, result.amount, telegramId);
           }
           break;
         
-        case 'withdraw':
+        case 'withdraw_btc':
           if (result.amount) {
-            await handleUSDWithdrawal(bot, chatId, result.amount, "default_address", sparkChatUserId);
+            // For BTC withdrawals via natural language, we need to ask for the address
+            await bot.sendMessage(chatId, 
+              `💡 Para retirar ${result.amount} BTC, usa el comando:\n` +
+              `/withdraw ${result.amount} <dirección_bitcoin>\n\n` +
+              `Ejemplo: /withdraw ${result.amount} bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh`
+            );
+          }
+          break;
+        
+        case 'withdraw_usd':
+          if (result.amount) {
+            await handleUSDWithdrawal(bot, chatId, result.amount, "default_address", telegramId);
           }
           break;
         
         case 'convert_to_usd':
           if (result.amount) {
-            await handleBTCToUSDConversion(bot, chatId, result.amount, sparkChatUserId);
+            await handleBTCToUSDConversion(bot, chatId, result.amount, telegramId);
           }
           break;
         
         case 'convert_to_btc':
           if (result.amount) {
-            await handleUSDToBTCConversion(bot, chatId, result.amount, sparkChatUserId);
+            await handleUSDToBTCConversion(bot, chatId, result.amount, telegramId);
           }
           break;
         
         case 'fund_wallet':
           if (result.amount) {
-            await handleWalletFunding(bot, chatId, result.amount, sparkChatUserId);
+            await handleWalletFunding(bot, chatId, result.amount, telegramId);
           }
           break;
         
